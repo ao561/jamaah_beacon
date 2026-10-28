@@ -1,6 +1,6 @@
 import type L from 'leaflet';
 import { Circle, MapContainer, Marker, TileLayer, ZoomControl, useMapEvents } from 'react-leaflet';
-import { FALLBACK_CENTER } from '../lib/config';
+import { FALLBACK_CENTER, SALAH_LABELS } from '../lib/config';
 import { beaconIcon, draftIcon, userIcon } from '../lib/markerIcons';
 import { getStatus } from '../lib/time';
 import type { Beacon, Coords } from '../lib/types';
@@ -72,11 +72,11 @@ export function MapView({
         <Marker
           key={b.id}
           position={[b.latitude, b.longitude]}
-          title={`${b.salah_name} at ${b.location_name}`}
+          title={`${SALAH_LABELS[b.salah_name]} at ${b.location_name}`}
           zIndexOffset={b.id === selectedId ? 500 : 0}
           icon={beaconIcon({
             salah: b.salah_name,
-            status: getStatus(b.iqamah_time, now),
+            status: getStatus(b, now),
             count: b.attendee_count,
             selected: b.id === selectedId,
             pending: Boolean(b.pending),

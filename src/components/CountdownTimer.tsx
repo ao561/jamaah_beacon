@@ -1,12 +1,15 @@
+import { startLabel } from '../lib/config';
 import { formatClock, formatCountdown, msUntil, type BeaconStatus } from '../lib/time';
+import type { SalahName } from '../lib/types';
 
 interface Props {
   iqamahTime: string;
+  salah: SalahName;
   status: BeaconStatus;
   now: number;
 }
 
-export function CountdownTimer({ iqamahTime, status, now }: Props) {
+export function CountdownTimer({ iqamahTime, salah, status, now }: Props) {
   const remaining = msUntil(iqamahTime, now);
   const tone =
     status === 'upcoming' ? 'bg-emerald-50 text-emerald-800' : status === 'in_progress' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-500';
@@ -24,7 +27,7 @@ export function CountdownTimer({ iqamahTime, status, now }: Props) {
           </p>
         )}
       </div>
-      <p className="pb-1 text-sm font-medium">Iqamah {formatClock(iqamahTime)}</p>
+      <p className="pb-1 text-sm font-medium">{startLabel(salah)} {formatClock(iqamahTime)}</p>
     </div>
   );
 }

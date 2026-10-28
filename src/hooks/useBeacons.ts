@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { beaconApi, isInActiveWindow } from '../lib/beacons';
 import { REFRESH_INTERVAL_MS } from '../lib/config';
 import { getMemberships, updateMemberships, type Memberships } from '../lib/memberships';
+import { addReported, getDeviceId, getReported, type ReportReason } from '../lib/reports';
 import type { Beacon, NewPrayer, Prayer } from '../lib/types';
 
 export type LoadState = 'loading' | 'ready' | 'error';
@@ -10,20 +11,25 @@ const PENDING_PREFIX = 'pending-';
 
 export const isPendingId = (id: string) => id.startsWith(PENDING_PREFIX);
 
+export type RemovalReason = 'cancelled' | 'hidden';
+
 interface Options {
-  /** A beacon disappeared because someone (possibly this device) cancelled it. */
-  onRemoteDelete?: (beacon: Beacon) => void;
+  /** A beacon disappeared because it was cancelled (possibly by this device) or hidden after reports. */
+  onRemoteRemoval?: (beacon: Beacon, reason: RemovalReason) => void;
 }
 
-export function useBeacons({ onRemoteDelete }: Options = {}) {
-  const [beacons, setBeacons] = useState<Beacon[]>([]);
+export function useBeacons({ onRemoteRemoval }: Options = {}) {
+  const [allBeacons, setBeacons] = useState<Beacon[]>([]);
+  const [reported, setReported] = useState<Set<string>>(getReported);
+  // Reporting hides a beacon for this device immediately.
+  const beacons = useMemo(() => allBeacons.filter((b) => !reported.has(b.id)), [allBeacons, reported]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [memberships, setMembershipsState] = useState<Memberships>(getMemberships);
 
   const beaconsRef = useRef(beacons);
   beaconsRef.current = beacons;
-  const onRemoteDeleteRef = useRef(onRemoteDelete);
-  onRemoteDeleteRef.current = onRemoteDelete;
+  const onRemoteRemovalRef = useRef(onRemoteRemoval);
+  onRemoteRemovalRef.current = onRemoteRemoval;
 
   const editMemberships = useCallback(
     (update: (m: Memberships) => void) => setMembershipsState(updateMemberships(update)),
@@ -60,20 +66,24 @@ export function useBeacons({ onRemoteDelete }: Options = {}) {
     };
     document.addEventListener('visibilitychange', onVisible);
 
+    const remove = (id: string, reason: RemovalReason) => {
+      const gone = beaconsRef.current.find((b) => b.id === id);
+      setBeacons((prev) => prev.filter((b) => b.id !== id));
+      if (gone) onRemoteRemovalRef.current?.(gone, reason);
+    };
+
     const unsubscribe = beaconApi.subscribe({
-      onUpsert: (row) =>
+      onUpsert: (row) => {
+        if (row.hidden_at) return remove(row.id, 'hidden');
         setBeacons((prev) => {
           const index = prev.findIndex((b) => b.id === row.id);
           if (index === -1) return isInActiveWindow(row.iqamah_time) ? [...prev, row] : prev;
           const next = prev.slice();
           next[index] = row;
           return next;
-        }),
-      onDelete: (deletedId) => {
-        const gone = beaconsRef.current.find((b) => b.id === deletedId);
-        setBeacons((prev) => prev.filter((b) => b.id !== deletedId));
-        if (gone) onRemoteDeleteRef.current?.(gone);
+        });
       },
+      onDelete: (id) => remove(id, 'cancelled'),
       onResync: () => void refresh(),
     });
 
@@ -173,5 +183,11 @@ export function useBeacons({ onRemoteDelete }: Options = {}) {
     [editMemberships],
   );
 
-  return { beacons, loadState, memberships, refresh, createBeacon, joinBeacon, leaveBeacon, cancelBeacon };
+  /** Hides the beacon on this device straight away, whatever the server decides. */
+  const reportBeacon = useCallback(async (id: string, reason: ReportReason): Promise<void> => {
+    await beaconApi.report(id, getDeviceId(), reason);
+    setReported(addReported(id));
+  }, []);
+
+  return { beacons, loadState, memberships, refresh, createBeacon, joinBeacon, leaveBeacon, cancelBeacon, reportBeacon };
 }

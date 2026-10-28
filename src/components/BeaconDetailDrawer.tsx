@@ -1,9 +1,10 @@
-import { Check, LoaderCircle, MapPin, Navigation, Share2, Users, X } from 'lucide-react';
+import { Check, Flag, LoaderCircle, MapPin, Navigation, Share2, Users, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
-import { SALAH_COLORS } from '../lib/config';
+import { SALAH_COLORS, SALAH_LABELS } from '../lib/config';
 import { distanceMeters, formatDistance, walkingDirectionsUrl } from '../lib/geo';
 import type { Membership } from '../lib/memberships';
+import { REPORT_REASONS, type ReportReason } from '../lib/reports';
 import { getStatus, msUntil, type BeaconStatus } from '../lib/time';
 import type { Beacon, Coords } from '../lib/types';
 import { BottomSheet } from './BottomSheet';
@@ -13,7 +14,7 @@ import { MetaBadges } from './MetaBadges';
 const STARTING_NOW_MS = 2 * 60_000;
 const CONFIRM_TIMEOUT_MS = 4000;
 
-export type BeaconAction = 'join' | 'leave' | 'cancel';
+export type BeaconAction = 'join' | 'leave' | 'cancel' | 'report';
 
 interface Props {
   beacon: Beacon | null;
@@ -24,6 +25,7 @@ interface Props {
   onLeave: (id: string) => void;
   onCancel: (id: string) => void;
   onShare: (beacon: Beacon) => void;
+  onReport: (id: string, reason: ReportReason) => void;
   onClose: () => void;
 }
 
@@ -47,9 +49,10 @@ function DrawerBody({
   onLeave,
   onCancel,
   onShare,
+  onReport,
   onClose,
 }: Omit<Props, 'beacon'> & { beacon: Beacon; now: number }) {
-  const status = getStatus(beacon.iqamah_time, now);
+  const status = getStatus(beacon, now);
   const coords: Coords = [beacon.latitude, beacon.longitude];
   const isHost = membership?.role === 'host';
   const pending = Boolean(beacon.pending);
@@ -65,7 +68,7 @@ function DrawerBody({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="beacon-title" className="text-2xl font-bold text-slate-900">
-              {beacon.salah_name}
+              {SALAH_LABELS[beacon.salah_name]}
             </h2>
             <StatusBadge status={status} startingNow={status === 'upcoming' && msUntil(beacon.iqamah_time, now) <= STARTING_NOW_MS} />
             {isHost && (
@@ -84,7 +87,7 @@ function DrawerBody({
         </button>
       </div>
 
-      <CountdownTimer iqamahTime={beacon.iqamah_time} status={status} now={now} />
+      <CountdownTimer iqamahTime={beacon.iqamah_time} salah={beacon.salah_name} status={status} now={now} />
 
       <div className="flex gap-3">
         <MapPin className="mt-0.5 size-5 shrink-0 text-slate-400" aria-hidden />
@@ -154,6 +157,44 @@ function DrawerBody({
           onConfirm={() => onLeave(beacon.id)}
         />
       )}
+      {!isHost && !pending && <ReportControl busy={busy === 'report'} onReport={(reason) => onReport(beacon.id, reason)} />}
+    </div>
+  );
+}
+
+function ReportControl({ busy, onReport }: { busy: boolean; onReport: (reason: ReportReason) => void }) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-slate-400 hover:text-slate-600"
+        >
+          <Flag className="size-3.5" /> Report this beacon
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1.5 rounded-2xl bg-slate-50 p-3" role="group" aria-label="Report reason">
+      <p className="text-sm font-semibold text-slate-800">What's wrong with it?</p>
+      {(Object.keys(REPORT_REASONS) as ReportReason[]).map((reason) => (
+        <button
+          key={reason}
+          type="button"
+          disabled={busy}
+          onClick={() => onReport(reason)}
+          className="w-full rounded-xl bg-white px-3 py-2.5 text-left text-sm text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50"
+        >
+          {REPORT_REASONS[reason]}
+        </button>
+      ))}
+      <button type="button" onClick={() => setOpen(false)} className="w-full py-1.5 text-sm font-medium text-slate-500">
+        Never mind
+      </button>
     </div>
   );
 }

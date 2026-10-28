@@ -16,7 +16,7 @@ With no Supabase credentials the app runs in **demo mode**: three mock beacons a
 ### Connect Supabase
 
 1. Create a Supabase project.
-2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) and then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
+2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
 3. `cp .env.example .env.local` and fill in the project URL and anon/publishable key (Project settings → API).
 4. Restart `npm run dev`.
 
@@ -41,6 +41,8 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 | Fetch, realtime subscription (plus a 60s fallback poll), optimistic create / join / leave, cancel | [`src/hooks/useBeacons.ts`](src/hooks/useBeacons.ts) |
 | Host and attendee tokens in `localStorage` | [`src/lib/memberships.ts`](src/lib/memberships.ts) |
 | Share links (`?b=<id>`), share sheet, clipboard fallback | [`src/lib/share.ts`](src/lib/share.ts) |
+| Prayer-time suggestions and warnings | [`src/lib/prayerTimes.ts`](src/lib/prayerTimes.ts) |
+| Device id and locally hidden (reported) beacons | [`src/lib/reports.ts`](src/lib/reports.ts) |
 | Status rules and countdown formatting | [`src/lib/time.ts`](src/lib/time.ts) |
 | Tunable windows, colours, fallback centre | [`src/lib/config.ts`](src/lib/config.ts) |
 | Screen state machine (browse / create / adjust-pin / set-location) | [`src/App.tsx`](src/App.tsx) |
@@ -51,11 +53,16 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Ownership without accounts.** `create_prayer` and `join_prayer` each return a random token, which the device keeps in `localStorage` (`joined_prayers`). Cancelling a beacon (`cancel_prayer`) needs the host token. Undoing a +1 (`leave_prayer`) needs that attendee's token, and each token works once. Strangers can't cancel someone else's beacon or remove their RSVPs. Clearing browser storage loses the ability to cancel or undo.
 
+**Prayer times and Jumu'ah.** The host form calculates today's times on the device for the pin's location, using [`adhan`](https://github.com/batoulapps/adhan-js). Tapping the method name under the prayer picker lets users choose the calculation method (12 options, Moonsighting Committee by default), Asr convention, and summer (high-latitude) adjustment. It also shows today's full timetable for the pin, so users can compare it with their mosque's. Choices are saved per area: they apply to any pin within 50 km of where they were set, so a user can keep one convention at home and another when travelling. They're stored in `localStorage` (`prayer_settings_by_area`, see [`src/lib/prayerSettings.ts`](src/lib/prayerSettings.ts)). It preselects the prayer for the chosen time, shows that prayer's window, and shows an amber warning if the time falls outside it. Methods and madhabs differ, so these are never hard errors, and with the Asr setting on "Either" (the default), the lenient bound is used: Shafi'i Asr for Asr's start, Hanafi Asr for Dhuhr's end. On Fridays, Jumu'ah becomes an option and is suggested at midday. Its time is labelled "Khutbah", and it stays on the map for 40 minutes after the start instead of 10.
+
+**Reports.** Anyone except the host can report a beacon: not a real jama'ah, wrong location, or inappropriate. The reporter stops seeing it immediately. Once 3 different devices report it, `hidden_at` is set and it disappears for everyone via realtime. Devices are identified by a random `device_id` in `localStorage`.
+
 **Database guardrails** (the migrations):
 - The anon role can only `select` from `prayers`. Every write goes through four `security definer` functions: `create_prayer`, `join_prayer`, `leave_prayer` and `cancel_prayer`.
 - Tokens are stored only as SHA-256 hashes, in `prayer_tokens`. RLS is on and there are no policies, so nobody can read it through the API.
 - A new beacon's iqamah must fall within the next ~2 hours. Joins are refused 15 minutes after iqamah. The count never drops below 1, since the host counts.
 - Reads only return beacons from the last hour onwards, so old location history can't be scraped.
+- Per-IP rate limits inside Postgres (`private.hit_rate_limit`). These cover creating (10 per 10 min and 30 per day), joining (120 per 10 min) and reporting (20 per hour). The IP comes from the `cf-connecting-ip` / `x-forwarded-for` headers that Supabase's edge sets. The limits are deliberately generous, because a whole office or campus Wi-Fi network often shares one IP. Tune them in migration 0003.
 - Text length and lat/lng range checks.
 
 **Host flow.** The pin defaults to your GPS fix. If accuracy is worse than ±50 m, or location is unavailable, the form prompts you to drag the pin. Submitting closes the form and shows a translucent pending pin while the write is in flight. If the write fails, the form reopens with your input intact. Once the beacon is live, its drawer opens with **Invite people** (the share sheet) and **Cancel this jama'ah**, which takes two taps.
@@ -73,7 +80,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 ## Known limitations
 
-- **Spam.** Zero-auth means anyone can create beacons or bump counts (clearing `localStorage` allows another +1). Before a public launch, put the RPCs behind an Edge Function with per-IP rate limiting, or add Cloudflare Turnstile.
+- **Spam.** Per-IP rate limits and reports catch casual abuse, but someone rotating IPs can still create fake beacons, and clearing `localStorage` allows another +1 or another report. The next layer is Cloudflare Turnstile, which needs a Cloudflare account for the site and secret keys.
 - **Global fetch.** Every active beacon worldwide is fetched. Add a bounding-box filter on latitude/longitude, plus a composite index, once there is traffic in more than one city.
 - **Map tiles.** Tiles come from OpenStreetMap's public servers, which are fine for development but have a [usage policy](https://operations.osmfoundation.org/policies/tiles/). Use a keyed provider (MapTiler, Stadia, Mapbox) in production.
 - **Link previews.** Every shared link shows the same generic WhatsApp/iMessage preview. A per-beacon preview (prayer, place, time) would need an edge function that renders the meta tags.

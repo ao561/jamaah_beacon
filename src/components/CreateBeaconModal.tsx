@@ -2,10 +2,13 @@ import { addMinutes, format } from 'date-fns';
 import { Droplets, MapPin, Move, TriangleAlert, Users, X } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
-import { IQAMAH_OFFSETS, LOOKAHEAD_MINUTES, SALAH_COLORS } from '../lib/config';
+import { IQAMAH_OFFSETS, LOOKAHEAD_MINUTES, SALAH_COLORS, SALAH_LABELS, startLabel } from '../lib/config';
+import { getPrayerSettings, METHODS, resetPrayerSettings, savePrayerSettings, type PrayerSettings } from '../lib/prayerSettings';
+import { describeWindow, isFriday, suggestSalah, timingWarning } from '../lib/prayerTimes';
 import { formatClock, resolveIqamah, type IqamahChoice } from '../lib/time';
-import { SALAH_NAMES, type NewPrayer, type SalahName } from '../lib/types';
+import { SALAH_NAMES, type Coords, type NewPrayer, type SalahName } from '../lib/types';
 import { BottomSheet } from './BottomSheet';
+import { PrayerSettingsPanel } from './PrayerSettingsPanel';
 
 export type PinSource = 'gps' | 'manual' | 'map' | 'adjusted';
 
@@ -17,6 +20,8 @@ const LOW_ACCURACY_M = 50;
 
 interface Props {
   open: boolean;
+  /** Where the beacon will be; used for prayer-time suggestions. */
+  coords: Coords;
   pinSource: PinSource;
   gpsAccuracy: number | null;
   error: string | null;
@@ -25,17 +30,38 @@ interface Props {
   onSubmit: (values: BeaconFormValues) => void;
 }
 
-export function CreateBeaconModal({ open, pinSource, gpsAccuracy, error, onAdjustPin, onCancel, onSubmit }: Props) {
+export function CreateBeaconModal({ open, coords, pinSource, gpsAccuracy, error, onAdjustPin, onCancel, onSubmit }: Props) {
   const now = useNow(10_000);
-  const [salah, setSalah] = useState<SalahName | null>(null);
+  // Until the host taps a prayer, follow the suggestion for the chosen time.
+  const [picked, setPicked] = useState<SalahName | null>(null);
   const [timing, setTiming] = useState<IqamahChoice>({ kind: 'offset', minutes: 10 });
   const [locationName, setLocationName] = useState('');
   const [notes, setNotes] = useState('');
   const [sisters, setSisters] = useState(false);
   const [wudu, setWudu] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Settings depend on where the pin is, so they're re-read from storage on every render
+  // (cheap) and this counter just forces a render after saving.
+  const [, setSettingsVersion] = useState(0);
+  const { settings: prayerSettings, saved: settingsSaved } = getPrayerSettings(coords);
+
+  const changePrayerSettings = (next: PrayerSettings) => {
+    savePrayerSettings(coords, next);
+    setSettingsVersion((v) => v + 1);
+  };
+  const resetToDefault = () => {
+    resetPrayerSettings(coords);
+    setSettingsVersion((v) => v + 1);
+  };
 
   const preview = resolveIqamah(timing, new Date(now));
+  const friday = preview !== null && isFriday(preview);
+  const options = SALAH_NAMES.filter((name) => name !== 'Jumuah' || friday);
+  const suggested = preview ? suggestSalah(coords, preview, prayerSettings) : null;
+  const salah = picked && options.includes(picked) ? picked : suggested;
+  const timesLine = salah && preview ? describeWindow(coords, salah, preview, prayerSettings) : null;
+  const warning = salah && preview ? timingWarning(coords, salah, preview, prayerSettings) : null;
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -45,8 +71,9 @@ export function CreateBeaconModal({ open, pinSource, gpsAccuracy, error, onAdjus
     if (!salah) return setLocalError('Choose which prayer you are leading.');
     if (!locationName.trim()) return setLocalError('Add a short location label so people can find you.');
     if (!iqamah || iqamah > addMinutes(submittedAt, LOOKAHEAD_MINUTES)) {
-      return setLocalError(`Pick an iqamah time within the next ${LOOKAHEAD_MINUTES / 60} hours.`);
+      return setLocalError(`Pick a ${startLabel(salah).toLowerCase()} time within the next ${LOOKAHEAD_MINUTES / 60} hours.`);
     }
+    if (salah === 'Jumuah' && !isFriday(iqamah)) return setLocalError("Jumu'ah is only on Fridays. Choose Dhuhr instead.");
 
     setLocalError(null);
     onSubmit({
@@ -78,26 +105,55 @@ export function CreateBeaconModal({ open, pinSource, gpsAccuracy, error, onAdjus
           </button>
         </div>
 
-        <Field label="Prayer">
-          <div className="grid grid-cols-5 gap-1.5">
-            {SALAH_NAMES.map((name) => (
+        <Field label="Prayer" hint={!picked && salah ? "suggested from today's prayer times" : undefined}>
+          <div className={`grid gap-1.5 ${options.length === 6 ? 'grid-cols-3' : 'grid-cols-5'}`}>
+            {options.map((name) => (
               <button
                 key={name}
                 type="button"
                 aria-pressed={salah === name}
-                onClick={() => setSalah(name)}
+                onClick={() => setPicked(name)}
                 style={salah === name ? { backgroundColor: SALAH_COLORS[name] } : undefined}
                 className={`rounded-xl py-2.5 text-sm font-semibold transition ${
                   salah === name ? 'text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {name}
+                {SALAH_LABELS[name]}
               </button>
             ))}
           </div>
+          {timesLine && (
+            <p className="mt-1.5 text-sm text-slate-500">
+              {timesLine} ·{' '}
+              <button
+                type="button"
+                onClick={() => setSettingsOpen((o) => !o)}
+                aria-expanded={settingsOpen}
+                className="font-medium text-emerald-700 underline-offset-2 hover:underline"
+              >
+                {METHODS[prayerSettings.method].label}
+              </button>
+            </p>
+          )}
+          {settingsOpen && (
+            <PrayerSettingsPanel
+              settings={prayerSettings}
+              saved={settingsSaved}
+              coords={coords}
+              date={preview ?? new Date(now)}
+              onChange={changePrayerSettings}
+              onReset={resetToDefault}
+              onDone={() => setSettingsOpen(false)}
+            />
+          )}
+          {warning && (
+            <p className="mt-1.5 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-sm text-amber-900">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {warning}
+            </p>
+          )}
         </Field>
 
-        <Field label="Iqamah" hint={preview ? `at ${formatClock(preview)}` : undefined}>
+        <Field label={startLabel(salah ?? 'Dhuhr')} hint={preview ? `at ${formatClock(preview)}` : undefined}>
           <div className="flex flex-wrap gap-1.5">
             {IQAMAH_OFFSETS.map((minutes) => {
               const active = timing.kind === 'offset' && timing.minutes === minutes;
@@ -119,7 +175,7 @@ export function CreateBeaconModal({ open, pinSource, gpsAccuracy, error, onAdjus
           {timing.kind === 'manual' && (
             <input
               type="time"
-              aria-label="Iqamah time"
+              aria-label={`${startLabel(salah ?? 'Dhuhr')} time`}
               value={timing.value}
               onChange={(e) => setTiming({ kind: 'manual', value: e.target.value })}
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-base outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"

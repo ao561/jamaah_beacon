@@ -1,3 +1,4 @@
+import { SALAH_LABELS, startLabel } from './config';
 import { formatClock } from './time';
 import type { Prayer } from './types';
 
@@ -25,7 +26,7 @@ export function syncBeaconUrl(id: string | null): void {
 /** Opens the native share sheet, falling back to copying the link. */
 export async function shareBeacon(beacon: Prayer): Promise<'shared' | 'copied' | 'dismissed'> {
   const url = beaconUrl(beacon.id);
-  const text = `${beacon.salah_name} jama'ah at ${beacon.location_name}, iqamah ${formatClock(beacon.iqamah_time)}.`;
+  const text = `${SALAH_LABELS[beacon.salah_name]} jama'ah at ${beacon.location_name}, ${startLabel(beacon.salah_name).toLowerCase()} ${formatClock(beacon.iqamah_time)}.`;
 
   if (navigator.share) {
     try {

@@ -7,11 +7,13 @@ import { MapView } from './components/MapView';
 import { NavigationBar, type SalahFilter } from './components/NavigationBar';
 import { Banner, BannerButton, StatusPill, Toast, type ToastMessage } from './components/Overlays';
 import { isPendingId, useBeacons } from './hooks/useBeacons';
+import { isFriday } from './lib/prayerTimes';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useNow } from './hooks/useNow';
 import { isDemoMode } from './lib/beacons';
-import { FALLBACK_CENTER } from './lib/config';
+import { FALLBACK_CENTER, SALAH_LABELS } from './lib/config';
 import { getMemberships } from './lib/memberships';
+import type { ReportReason } from './lib/reports';
 import { beaconIdFromUrl, shareBeacon, syncBeaconUrl } from './lib/share';
 import { getStatus } from './lib/time';
 import type { Beacon, Coords } from './lib/types';
@@ -46,15 +48,19 @@ export default function App() {
   const dismissToast = useCallback(() => setToast(null), []);
 
   const geo = useGeolocation();
-  const { beacons, loadState, memberships, refresh, createBeacon, joinBeacon, leaveBeacon, cancelBeacon } = useBeacons({
-    onRemoteDelete: (beacon) => {
-      const membership = getMemberships()[beacon.id];
-      // Only tell people who were looking at it or planning to go; hosts know they cancelled.
-      if (membership?.role !== 'host' && (membership || beacon.id === selectedId)) {
-        notify('error', `The host cancelled ${beacon.salah_name} at ${beacon.location_name}.`);
-      }
-    },
-  });
+  const { beacons, loadState, memberships, refresh, createBeacon, joinBeacon, leaveBeacon, cancelBeacon, reportBeacon } =
+    useBeacons({
+      onRemoteRemoval: (beacon, reason) => {
+        const membership = getMemberships()[beacon.id];
+        const label = `${SALAH_LABELS[beacon.salah_name]} at ${beacon.location_name}`;
+        // Only tell people who were looking at it or planning to go; hosts know they cancelled.
+        if (reason === 'hidden') {
+          if (membership || beacon.id === selectedId) notify('error', `${label} was removed after reports.`);
+        } else if (membership?.role !== 'host' && (membership || beacon.id === selectedId)) {
+          notify('error', `The host cancelled ${label}.`);
+        }
+      },
+    });
   // Coarse tick for marker status / auto-hide; the drawer runs its own 1s countdown.
   const now = useNow(5000);
 
@@ -73,7 +79,7 @@ export default function App() {
   const userLocation = geo.coords ?? manualLocation;
   const locationOff = geo.status === 'denied' || geo.status === 'unavailable';
 
-  const live = useMemo(() => beacons.filter((b) => getStatus(b.iqamah_time, now) !== 'ended'), [beacons, now]);
+  const live = useMemo(() => beacons.filter((b) => getStatus(b, now) !== 'ended'), [beacons, now]);
   const visible = useMemo(() => (filter === 'All' ? live : live.filter((b) => b.salah_name === filter)), [live, filter]);
   // Looked up in `live` (not `visible`) so changing the filter doesn't close an open drawer.
   const selected = live.find((b) => b.id === selectedId) ?? null;
@@ -197,7 +203,7 @@ export default function App() {
       setConfirmId(row.id);
       // Open it so the host can invite people straight away.
       focusBeacon(row);
-      notify('success', `Your ${row.salah_name} beacon is live.`);
+      notify('success', `Your ${SALAH_LABELS[row.salah_name]} beacon is live.`);
     } catch (err) {
       console.error('Failed to create beacon', err);
       // Reopen the form with everything the host typed still in place.
@@ -224,6 +230,8 @@ export default function App() {
   const handleJoin = (id: string) => runAction(id, 'join', () => joinBeacon(id));
   const handleLeave = (id: string) => runAction(id, 'leave', () => leaveBeacon(id), "You've been removed. Maybe next time.");
   const handleCancel = (id: string) => runAction(id, 'cancel', () => cancelBeacon(id), "Jama'ah cancelled.");
+  const handleReport = (id: string, reason: ReportReason) =>
+    runAction(id, 'report', () => reportBeacon(id, reason), "Thanks for reporting. We've hidden it for you.");
 
   const handleShare = async (beacon: Beacon) => {
     try {
@@ -256,7 +264,13 @@ export default function App() {
         onDraftMove={(coords) => setDraft({ coords, source: 'adjusted' })}
       />
 
-      <NavigationBar activeCount={live.length} filter={filter} onFilterChange={setFilter} demo={isDemoMode} />
+      <NavigationBar
+        activeCount={live.length}
+        filter={filter}
+        onFilterChange={setFilter}
+        demo={isDemoMode}
+        showJumuah={isFriday(new Date(now)) || live.some((b) => b.salah_name === 'Jumuah')}
+      />
 
       {showLocationBanner && (
         <Banner
@@ -292,12 +306,14 @@ export default function App() {
         onLeave={handleLeave}
         onCancel={handleCancel}
         onShare={handleShare}
+        onReport={handleReport}
         onClose={closeDrawer}
       />
 
       <CreateBeaconModal
         key={formKey}
         open={mode === 'create'}
+        coords={draft?.coords ?? userLocation ?? FALLBACK_CENTER}
         pinSource={draft?.source ?? 'map'}
         gpsAccuracy={geo.accuracy}
         error={submitError}

@@ -1,5 +1,5 @@
 import { RadioTower } from 'lucide-react';
-import { SALAH_COLORS } from '../lib/config';
+import { SALAH_COLORS, SALAH_LABELS } from '../lib/config';
 import { SALAH_NAMES, type SalahName } from '../lib/types';
 
 export type SalahFilter = SalahName | 'All';
@@ -9,9 +9,11 @@ interface Props {
   filter: SalahFilter;
   onFilterChange: (filter: SalahFilter) => void;
   demo: boolean;
+  /** Jumu'ah chip only matters on Fridays or when there's a live Jumu'ah beacon. */
+  showJumuah: boolean;
 }
 
-export function NavigationBar({ activeCount, filter, onFilterChange, demo }: Props) {
+export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJumuah }: Props) {
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[1000] px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
       <div className="pointer-events-auto mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-white/95 px-4 py-2.5 shadow-lg ring-1 ring-black/5 backdrop-blur">
@@ -35,7 +37,7 @@ export function NavigationBar({ activeCount, filter, onFilterChange, demo }: Pro
         aria-label="Filter by prayer"
         className="pointer-events-auto mx-auto mt-2 flex max-w-xl gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]"
       >
-        {(['All', ...SALAH_NAMES] as const).map((name) => {
+        {(['All', ...SALAH_NAMES.filter((n) => n !== 'Jumuah' || showJumuah)] as const).map((name) => {
           const active = filter === name;
           return (
             <button
@@ -50,7 +52,7 @@ export function NavigationBar({ activeCount, filter, onFilterChange, demo }: Pro
               {name !== 'All' && (
                 <span className="size-2 rounded-full" style={{ backgroundColor: SALAH_COLORS[name] }} aria-hidden />
               )}
-              {name}
+              {name === 'All' ? name : SALAH_LABELS[name]}
             </button>
           );
         })}

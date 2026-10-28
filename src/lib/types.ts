@@ -1,4 +1,4 @@
-export const SALAH_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] as const;
+export const SALAH_NAMES = ['Fajr', 'Dhuhr', 'Jumuah', 'Asr', 'Maghrib', 'Isha'] as const;
 export type SalahName = (typeof SALAH_NAMES)[number];
 
 /** [latitude, longitude] */
@@ -17,6 +17,8 @@ export interface Prayer {
   wudu_nearby: boolean;
   attendee_count: number;
   created_at: string;
+  /** Set once enough reports come in; hidden beacons are treated as removed. */
+  hidden_at?: string | null;
 }
 
 export type NewPrayer = Pick<

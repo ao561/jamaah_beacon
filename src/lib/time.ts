@@ -1,13 +1,15 @@
 import { addDays, addMinutes, differenceInMilliseconds, isBefore, set, subMinutes } from 'date-fns';
-import { HIDE_AFTER_MINUTES } from './config';
+import { HIDE_AFTER_MINUTES, JUMUAH_HIDE_AFTER_MINUTES } from './config';
+import type { Prayer } from './types';
 
 export type BeaconStatus = 'upcoming' | 'in_progress' | 'ended';
 
-/** T > 0: upcoming; 0 >= T > -10m: in progress; otherwise ended (hidden). */
-export function getStatus(iqamahTime: string, now: number): BeaconStatus {
-  const remaining = msUntil(iqamahTime, now);
+/** T > 0: upcoming; 0 >= T > -10m (-40m for Jumu'ah): in progress; otherwise ended (hidden). */
+export function getStatus(beacon: Pick<Prayer, 'iqamah_time' | 'salah_name'>, now: number): BeaconStatus {
+  const remaining = msUntil(beacon.iqamah_time, now);
+  const hideAfter = beacon.salah_name === 'Jumuah' ? JUMUAH_HIDE_AFTER_MINUTES : HIDE_AFTER_MINUTES;
   if (remaining > 0) return 'upcoming';
-  if (remaining > -HIDE_AFTER_MINUTES * 60_000) return 'in_progress';
+  if (remaining > -hideAfter * 60_000) return 'in_progress';
   return 'ended';
 }
 

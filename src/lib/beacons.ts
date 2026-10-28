@@ -1,5 +1,6 @@
 import { addMinutes } from 'date-fns';
 import { FALLBACK_CENTER, LOOKAHEAD_MINUTES, LOOKBACK_MINUTES } from './config';
+import type { ReportReason } from './reports';
 import { supabase } from './supabase';
 import type { NewPrayer, Prayer } from './types';
 
@@ -19,6 +20,8 @@ export interface BeaconApi {
   leave(id: string, token: string): Promise<number | null>;
   /** Returns whether the beacon was deleted. */
   cancel(id: string, token: string): Promise<boolean>;
+  /** Returns whether this report pushed the beacon over the hide threshold. */
+  report(id: string, deviceId: string, reason: ReportReason): Promise<boolean>;
   /** Live changes; returns an unsubscribe function. */
   subscribe(handlers: ChangeHandlers): () => void;
 }
@@ -46,6 +49,7 @@ function createSupabaseApi(client: NonNullable<typeof supabase>): BeaconApi {
         .select('*')
         .gte('iqamah_time', from)
         .lte('iqamah_time', to)
+        .is('hidden_at', null)
         .order('iqamah_time', { ascending: true });
       if (error) throw error;
       return data as Prayer[];
@@ -74,6 +78,12 @@ function createSupabaseApi(client: NonNullable<typeof supabase>): BeaconApi {
 
     async cancel(id, token) {
       const { data, error } = await client.rpc('cancel_prayer', { prayer_id: id, token });
+      if (error) throw error;
+      return data === true;
+    },
+
+    async report(id, deviceId, reason) {
+      const { data, error } = await client.rpc('report_prayer', { prayer_id: id, device_id: deviceId, reason });
       if (error) throw error;
       return data === true;
     },
@@ -189,6 +199,12 @@ function createDemoApi(): BeaconApi {
       if (index === -1 || issued?.id !== id || issued.role !== 'host') return false;
       rows.splice(index, 1);
       return true;
+    },
+
+    async report() {
+      await latency();
+      // One demo device can never reach the threshold of 3.
+      return false;
     },
 
     subscribe() {
