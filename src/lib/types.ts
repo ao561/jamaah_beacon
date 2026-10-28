@@ -25,6 +25,8 @@ export interface Prayer {
   regular_id?: string | null;
   /** Weekdays it repeats on (0 = Sunday); null once the host stops repeating. */
   repeat_days?: number[] | null;
+  /** Null when there's no photo; changes whenever the photo does. */
+  photo_updated_at?: string | null;
 }
 
 /** Fields a host can change after posting. */

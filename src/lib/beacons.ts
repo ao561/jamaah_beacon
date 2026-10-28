@@ -32,9 +32,17 @@ export interface BeaconApi {
   cancel(id: string, token: string): Promise<boolean>;
   /** Returns whether this report pushed the beacon over the hide threshold. */
   report(id: string, deviceId: string, reason: ReportReason): Promise<boolean>;
+  /** Host-only; a base64 JPEG/WebP, or null to remove it. */
+  setPhoto(id: string, token: string, imageBase64: string | null): Promise<void>;
+  /** A data: URL, or null if there's no (visible) photo. */
+  getPhoto(id: string): Promise<string | null>;
+  /** Anonymous usage counter. Never throws. */
+  track(event: TrackedEvent): void;
   /** Live changes; returns an unsubscribe function. */
   subscribe(handlers: ChangeHandlers): () => void;
 }
+
+export type TrackedEvent = 'app_open' | 'beacon_view' | 'share' | 'list_open';
 
 function activeWindow() {
   const now = new Date();
@@ -117,6 +125,21 @@ function createSupabaseApi(client: NonNullable<typeof supabase>): BeaconApi {
       return data === true;
     },
 
+    async setPhoto(id, token, imageBase64) {
+      const { error } = await client.rpc('set_prayer_photo', { prayer_id: id, token, image_base64: imageBase64 });
+      if (error) throw error;
+    },
+
+    async getPhoto(id) {
+      const { data, error } = await client.rpc('get_prayer_photo', { prayer_id: id });
+      if (error) throw error;
+      return (data as string | null) ?? null;
+    },
+
+    track(event) {
+      void client.rpc('track_event', { event }).then(({ error }) => error && console.warn('track failed', error.message));
+    },
+
     subscribe({ onUpsert, onDelete, onResync }) {
       // Unique topic: StrictMode remounts would otherwise reuse a channel that's still closing.
       const channel = client
@@ -181,6 +204,7 @@ function createDemoApi(): BeaconApi {
   ];
   const tokens = new Map<string, { id: string; role: 'host' | 'attendee' }>();
   const regularTokens = new Map<string, string>(); // regular id -> host token
+  const photos = new Map<string, string>(); // beacon id -> data URL
   const isHost = (id: string, token: string) => {
     const row = rows.find((r) => r.id === id);
     const issued = tokens.get(token);
@@ -267,6 +291,23 @@ function createDemoApi(): BeaconApi {
       // One demo device can never reach the threshold of 3.
       return false;
     },
+
+    async setPhoto(id, token, imageBase64) {
+      await latency();
+      if (!isHost(id, token)) throw new Error('Only the host can change the photo.');
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      if (imageBase64) photos.set(id, `data:image/jpeg;base64,${imageBase64}`);
+      else photos.delete(id);
+      row.photo_updated_at = imageBase64 ? new Date().toISOString() : null;
+    },
+
+    async getPhoto(id) {
+      await latency();
+      return photos.get(id) ?? null;
+    },
+
+    track() {},
 
     subscribe() {
       return () => {};

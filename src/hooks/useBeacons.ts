@@ -216,6 +216,13 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
     return updated;
   }, []);
 
+  /** Host-only; pass null to remove. */
+  const setBeaconPhoto = useCallback(async (id: string, imageBase64: string | null): Promise<void> => {
+    await beaconApi.setPhoto(id, hostTokenFor(id), imageBase64);
+    const stamp = imageBase64 ? new Date().toISOString() : null;
+    setBeacons((prev) => prev.map((b) => (b.id === id ? { ...b, photo_updated_at: stamp } : b)));
+  }, []);
+
   /** Stops future days; today's beacon stays until cancelled or over. */
   const stopRegular = useCallback(async (regularId: string): Promise<void> => {
     const token = getRegularHosts()[regularId];
@@ -256,6 +263,7 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
     refresh,
     createBeacon,
     updateBeacon,
+    setBeaconPhoto,
     stopRegular,
     joinBeacon,
     leaveBeacon,

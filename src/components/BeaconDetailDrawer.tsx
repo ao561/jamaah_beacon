@@ -1,6 +1,7 @@
 import { Check, Flag, LoaderCircle, MapPin, Navigation, Pencil, Repeat, Share2, Users, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
+import { usePhoto } from '../hooks/usePhoto';
 import { SALAH_COLORS, SALAH_LABELS } from '../lib/config';
 import { distanceMeters, formatDistance, walkingDirectionsUrl } from '../lib/geo';
 import type { Membership } from '../lib/memberships';
@@ -117,6 +118,8 @@ function DrawerBody({
         </div>
       </div>
 
+      {beacon.photo_updated_at && <SpotPhoto beacon={beacon} />}
+
       <MetaBadges sistersFriendly={beacon.sisters_friendly} wuduNearby={beacon.wudu_nearby} />
 
       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
@@ -211,6 +214,32 @@ function DrawerBody({
       )}
       {!isHost && !pending && <ReportControl busy={busy === 'report'} onReport={(reason) => onReport(beacon.id, reason)} />}
     </div>
+  );
+}
+
+function SpotPhoto({ beacon }: { beacon: Beacon }) {
+  const src = usePhoto(beacon);
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setExpanded((e) => !e)}
+      aria-label={expanded ? 'Shrink photo' : 'Enlarge photo'}
+      className={`block w-full overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800 ${expanded ? '' : 'h-44'}`}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt={`Photo of ${beacon.location_name}`}
+          className={expanded ? 'max-h-[70dvh] w-full object-contain' : 'h-full w-full object-cover'}
+        />
+      ) : (
+        <span className="grid h-44 place-items-center">
+          <LoaderCircle className="size-5 animate-spin text-slate-400 dark:text-slate-500" />
+        </span>
+      )}
+    </button>
   );
 }
 

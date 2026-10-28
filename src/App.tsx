@@ -2,7 +2,8 @@ import type L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BeaconDetailDrawer, type BeaconAction } from './components/BeaconDetailDrawer';
 import { CreateBeaconModal, type BeaconFormValues, type PinSource } from './components/CreateBeaconModal';
-import { FloatingActionBar } from './components/FloatingActionBar';
+import { FloatingActionBar, type View } from './components/FloatingActionBar';
+import { ListView } from './components/ListView';
 import { MapView } from './components/MapView';
 import { NavigationBar, type SalahFilter } from './components/NavigationBar';
 import { Banner, BannerButton, StatusPill, Toast, type ToastMessage } from './components/Overlays';
@@ -11,7 +12,7 @@ import { isFriday } from './lib/prayerTimes';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useNow } from './hooks/useNow';
 import { useTheme } from './hooks/useTheme';
-import { isDemoMode } from './lib/beacons';
+import { beaconApi, isDemoMode } from './lib/beacons';
 import { FALLBACK_CENTER, SALAH_LABELS } from './lib/config';
 import { getRegularHosts, membershipFor } from './lib/memberships';
 import type { ReportReason } from './lib/reports';
@@ -57,6 +58,7 @@ export default function App() {
     refresh,
     createBeacon,
     updateBeacon,
+    setBeaconPhoto,
     stopRegular,
     joinBeacon,
     leaveBeacon,
@@ -90,6 +92,7 @@ export default function App() {
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [mode, setMode] = useState<Mode>('browse');
+  const [view, setView] = useState<View>('map');
   const [filter, setFilter] = useState<SalahFilter>('All');
   const [manualLocation, setManualLocation] = useState<Coords | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -122,6 +125,12 @@ export default function App() {
       map.setView(geo.coords, 16);
     }
   }, [map, geo.coords]);
+
+  useEffect(() => beaconApi.track('app_open'), []);
+
+  useEffect(() => {
+    if (selectedId && !isPendingId(selectedId)) beaconApi.track('beacon_view');
+  }, [selectedId]);
 
   // Instruction banners share the toast's slot; don't let a stale toast cover them.
   useEffect(() => {
@@ -188,7 +197,32 @@ export default function App() {
     }
   };
 
+  const toggleView = () => {
+    setSelectedId(null);
+    setView((v) => {
+      if (v === 'map') beaconApi.track('list_open');
+      return v === 'map' ? 'list' : 'map';
+    });
+  };
+
+  const selectFromList = (beacon: Beacon) => {
+    setView('map');
+    focusBeacon(beacon);
+  };
+
+  /** Photos upload after the beacon itself is saved; a failure here doesn't undo the beacon. */
+  const applyPhoto = async (id: string, change: BeaconFormValues['photo']) => {
+    if (change.kind === 'keep') return;
+    try {
+      await setBeaconPhoto(id, change.kind === 'set' ? change.base64 : null);
+    } catch (err) {
+      console.error('Failed to save photo', err);
+      notify('error', `Saved, but the photo didn't upload: ${errorMessage(err)}`);
+    }
+  };
+
   const openCreate = () => {
+    setView('map');
     setSelectedId(null);
     setSubmitError(null);
     if (editingId) {
@@ -230,9 +264,9 @@ export default function App() {
   const handleSubmit = async (values: BeaconFormValues) => {
     if (!draft) return;
     const [latitude, longitude] = draft.coords;
-    const { repeatDays, ...fields } = values;
+    const { repeatDays, photo, ...fields } = values;
 
-    if (editingId) return saveEdit(editingId, { ...fields, latitude, longitude });
+    if (editingId) return saveEdit(editingId, { ...fields, latitude, longitude }, photo);
 
     // Close the form straight away; the optimistic pin appears while the write is in flight.
     setMode('browse');
@@ -244,6 +278,7 @@ export default function App() {
     try {
       const repeat = repeatDays ? { days: repeatDays, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } : undefined;
       const row = await createBeacon({ ...fields, latitude, longitude }, repeat);
+      void applyPhoto(row.id, photo);
       setDraft(null);
       setFormKey((k) => k + 1);
       setConfirmId(row.id);
@@ -260,7 +295,7 @@ export default function App() {
     }
   };
 
-  const saveEdit = async (id: string, changes: PrayerChanges) => {
+  const saveEdit = async (id: string, changes: PrayerChanges, photo: BeaconFormValues['photo']) => {
     const original = beacons.find((b) => b.id === id);
     // An unchanged time is left out: the server would reject a start time that's already passed.
     if (original && changes.iqamah_time && new Date(changes.iqamah_time).getTime() === new Date(original.iqamah_time).getTime()) {
@@ -271,6 +306,7 @@ export default function App() {
     setSubmitError(null);
     try {
       const row = await updateBeacon(id, changes);
+      void applyPhoto(id, photo);
       setEditingId(null);
       setDraft(null);
       setFormKey((k) => k + 1);
@@ -319,7 +355,9 @@ export default function App() {
 
   const handleShare = async (beacon: Beacon) => {
     try {
-      if ((await shareBeacon(beacon)) === 'copied') notify('success', 'Link copied. Paste it into your group chat.');
+      const result = await shareBeacon(beacon);
+      if (result !== 'dismissed') beaconApi.track('share');
+      if (result === 'copied') notify('success', 'Link copied. Paste it into your group chat.');
     } catch (err) {
       console.error('Failed to share beacon', err);
       notify('error', "Couldn't share. Copy the link from the address bar instead.");
@@ -328,9 +366,9 @@ export default function App() {
 
   const closeDrawer = useCallback(() => setSelectedId(null), []);
 
-  const showLocationBanner = mode === 'browse' && locationOff && !manualLocation && !locationBannerDismissed;
+  const showLocationBanner = mode === 'browse' && view === 'map' && locationOff && !manualLocation && !locationBannerDismissed;
   const statusPill =
-    mode !== 'browse' || selected ? null : loadState === 'loading' ? 'loading' : loadState === 'error' ? 'error' : visible.length === 0 ? 'empty' : null;
+    mode !== 'browse' || selected || view === 'list' ? null : loadState === 'loading' ? 'loading' : loadState === 'error' ? 'error' : visible.length === 0 ? 'empty' : null;
 
   return (
     <div className="fixed inset-0 bg-slate-100 dark:bg-slate-950">
@@ -377,10 +415,21 @@ export default function App() {
         </Banner>
       )}
 
+      {view === 'list' && mode === 'browse' && (
+        <ListView beacons={visible} now={now} userLocation={userLocation} roleFor={roleFor} onSelect={selectFromList} />
+      )}
+
       {statusPill && <StatusPill state={statusPill} onRetry={refresh} />}
 
       {mode === 'browse' && !selected && (
-        <FloatingActionBar hasLocation={userLocation !== null} publishing={publishing} onLocate={handleLocate} onHost={openCreate} />
+        <FloatingActionBar
+          view={view}
+          onToggleView={toggleView}
+          hasLocation={userLocation !== null}
+          publishing={publishing}
+          onLocate={handleLocate}
+          onHost={openCreate}
+        />
       )}
 
       <BeaconDetailDrawer

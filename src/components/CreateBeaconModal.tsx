@@ -8,6 +8,7 @@ import { describeWindow, isFriday, suggestSalah, timingWarning } from '../lib/pr
 import { formatClock, formatDays, resolveIqamah, type IqamahChoice } from '../lib/time';
 import { SALAH_NAMES, type Beacon, type Coords, type NewPrayer, type SalahName } from '../lib/types';
 import { BottomSheet } from './BottomSheet';
+import { PhotoPicker, type PhotoChange } from './PhotoPicker';
 import { PrayerSettingsPanel } from './PrayerSettingsPanel';
 
 export type PinSource = 'gps' | 'manual' | 'map' | 'adjusted' | 'existing';
@@ -15,6 +16,7 @@ export type PinSource = 'gps' | 'manual' | 'map' | 'adjusted' | 'existing';
 export type BeaconFormValues = Omit<NewPrayer, 'latitude' | 'longitude'> & {
   /** Weekdays to repeat on (0 = Sunday), or null for a one-off. Always null when editing. */
   repeatDays: number[] | null;
+  photo: PhotoChange;
 };
 
 const WEEKDAY_CHIPS = [
@@ -69,6 +71,7 @@ export function CreateBeaconModal({
   const [sisters, setSisters] = useState(initial?.sisters_friendly ?? false);
   const [wudu, setWudu] = useState(initial?.wudu_nearby ?? false);
   const [repeat, setRepeat] = useState(false);
+  const [photo, setPhoto] = useState<PhotoChange>({ kind: 'keep' });
   const [repeatDays, setRepeatDays] = useState<number[]>(() => [new Date().getDay()]);
   const [localError, setLocalError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -122,6 +125,7 @@ export function CreateBeaconModal({
       sisters_friendly: sisters,
       wudu_nearby: wudu,
       repeatDays: repeat && !editing ? effectiveDays : null,
+      photo,
     });
   };
 
@@ -249,6 +253,10 @@ export function CreateBeaconModal({
             placeholder="e.g. Behind aisle 14, by the quiet study carrels"
             className="w-full resize-none rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5 text-base outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
           />
+        </Field>
+
+        <Field label="Photo" hint="optional, helps people find indoor spots">
+          <PhotoPicker value={photo} onChange={setPhoto} existing={initial} onError={setLocalError} />
         </Field>
 
         <div className="space-y-2">
