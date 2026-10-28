@@ -12,11 +12,16 @@ export interface GeoState {
 
 const PERMISSION_DENIED = 1;
 
-/** Watches the device position. Never throws; failures surface as `denied` / `unavailable`. */
-export function useGeolocation(): GeoState {
+/**
+ * Watches the device position once `enabled` (held back during the welcome, so the
+ * permission prompt doesn't land on top of it). Never throws; failures surface as
+ * `denied` / `unavailable`.
+ */
+export function useGeolocation(enabled = true): GeoState {
   const [state, setState] = useState<GeoState>({ status: 'pending', coords: null, accuracy: null });
 
   useEffect(() => {
+    if (!enabled) return;
     // Geolocation needs a secure context (https or localhost).
     if (!('geolocation' in navigator) || !window.isSecureContext) {
       setState({ status: 'unavailable', coords: null, accuracy: null });
@@ -39,7 +44,7 @@ export function useGeolocation(): GeoState {
       { enableHighAccuracy: true, maximumAge: 30_000, timeout: 15_000 },
     );
     return () => navigator.geolocation.clearWatch(id);
-  }, []);
+  }, [enabled]);
 
   return state;
 }

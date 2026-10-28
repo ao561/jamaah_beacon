@@ -6,7 +6,9 @@ import { FloatingActionBar, type View } from './components/FloatingActionBar';
 import { ListView } from './components/ListView';
 import { MapView } from './components/MapView';
 import { NavigationBar, type SalahFilter } from './components/NavigationBar';
+import { InstallNudge } from './components/InstallNudge';
 import { Banner, BannerButton, StatusPill, Toast, type ToastMessage } from './components/Overlays';
+import { WelcomeSheet } from './components/WelcomeSheet';
 import { isPendingId, useBeacons } from './hooks/useBeacons';
 import { isFriday } from './lib/prayerTimes';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -14,6 +16,7 @@ import { useNow } from './hooks/useNow';
 import { useTheme } from './hooks/useTheme';
 import { beaconApi, isDemoMode } from './lib/beacons';
 import { FALLBACK_CENTER, SALAH_LABELS } from './lib/config';
+import { dismissInstallNudge, hasBeenWelcomed, installNudgeDismissed, installWorthOffering, markWelcomed } from './lib/install';
 import { getRegularHosts, membershipFor } from './lib/memberships';
 import type { ReportReason } from './lib/reports';
 import { beaconIdFromUrl, shareBeacon, syncBeaconUrl } from './lib/share';
@@ -49,7 +52,28 @@ export default function App() {
   const notify = useCallback((tone: ToastMessage['tone'], text: string) => setToast({ id: Date.now(), tone, text }), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  const geo = useGeolocation();
+  // First visit: a short welcome, with the location prompt held until it's done.
+  // Visitors arriving on a shared link skip it and see it next time.
+  const [welcomeOpen, setWelcomeOpen] = useState(() => !hasBeenWelcomed() && beaconIdFromUrl() === null);
+  const [locationAllowed, setLocationAllowed] = useState(!welcomeOpen);
+  const [installNudgeOpen, setInstallNudgeOpen] = useState(false);
+
+  const finishWelcome = useCallback(() => {
+    markWelcomed();
+    setWelcomeOpen(false);
+    setLocationAllowed(true);
+  }, []);
+
+  /** After a first join or host: the moment people are most likely to want the app. */
+  const maybeNudgeInstall = () => {
+    if (!installNudgeDismissed() && installWorthOffering()) setInstallNudgeOpen(true);
+  };
+  const closeInstallNudge = () => {
+    dismissInstallNudge();
+    setInstallNudgeOpen(false);
+  };
+
+  const geo = useGeolocation(locationAllowed);
   const theme = useTheme();
   const {
     beacons,
@@ -285,6 +309,7 @@ export default function App() {
       // Open it so the host can invite people straight away.
       focusBeacon(row);
       notify('success', `Your ${SALAH_LABELS[row.salah_name]} beacon is live${repeat ? ' and will repeat' : ''}.`);
+      maybeNudgeInstall();
     } catch (err) {
       console.error('Failed to create beacon', err);
       // Reopen the form with everything the host typed still in place.
@@ -334,7 +359,11 @@ export default function App() {
     }
   };
 
-  const handleJoin = (id: string) => runAction(id, 'join', () => joinBeacon(id));
+  const handleJoin = (id: string) =>
+    runAction(id, 'join', async () => {
+      await joinBeacon(id);
+      maybeNudgeInstall();
+    });
   const handleLeave = (id: string) => runAction(id, 'leave', () => leaveBeacon(id), "You've been removed. Maybe next time.");
   const handleCancel = (id: string) => runAction(id, 'cancel', () => cancelBeacon(id), "Jama'ah cancelled.");
   const handleDelay = (beacon: Beacon, minutes: number) => {
@@ -394,6 +423,7 @@ export default function App() {
         showJumuah={isFriday(new Date(now)) || live.some((b) => b.salah_name === 'Jumuah')}
         theme={theme.pref}
         onCycleTheme={theme.cycle}
+        onHelp={() => setWelcomeOpen(true)}
       />
 
       {showLocationBanner && (
@@ -461,6 +491,10 @@ export default function App() {
         onCancel={cancelCreate}
         onSubmit={handleSubmit}
       />
+
+      {installNudgeOpen && mode === 'browse' && !selected && <InstallNudge onDismiss={closeInstallNudge} />}
+
+      <WelcomeSheet open={welcomeOpen} onDone={finishWelcome} />
 
       <Toast toast={toast} onDismiss={dismissToast} />
     </div>

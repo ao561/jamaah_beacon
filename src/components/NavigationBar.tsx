@@ -1,4 +1,4 @@
-import { Monitor, Moon, RadioTower, Sun } from 'lucide-react';
+import { CircleHelp, Monitor, Moon, RadioTower, Sun } from 'lucide-react';
 import { SALAH_COLORS, SALAH_LABELS } from '../lib/config';
 import type { ThemePref } from '../lib/theme';
 import { SALAH_NAMES, type SalahName } from '../lib/types';
@@ -14,12 +14,13 @@ interface Props {
   showJumuah: boolean;
   theme: ThemePref;
   onCycleTheme: () => void;
+  onHelp: () => void;
 }
 
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
 const THEME_NAMES = { system: 'System', light: 'Light', dark: 'Dark' };
 
-export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJumuah, theme, onCycleTheme }: Props) {
+export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJumuah, theme, onCycleTheme, onHelp }: Props) {
   const ThemeIcon = THEME_ICONS[theme];
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[1000] px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -38,6 +39,15 @@ export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJ
             Demo data
           </span>
         )}
+        <button
+          type="button"
+          onClick={onHelp}
+          aria-label="How it works"
+          title="How it works"
+          className="-mr-1 grid size-9 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          <CircleHelp className="size-5" />
+        </button>
         <button
           type="button"
           onClick={onCycleTheme}
