@@ -16,7 +16,7 @@ With no Supabase credentials the app runs in **demo mode**: three mock beacons a
 ### Connect Supabase
 
 1. Create a Supabase project.
-2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
+2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
 3. `cp .env.example .env.local` and fill in the project URL and anon/publishable key (Project settings → API).
 4. Restart `npm run dev`.
 
@@ -47,7 +47,9 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 | Tunable windows, colours, fallback centre | [`src/lib/config.ts`](src/lib/config.ts) |
 | Screen state machine (browse / create / adjust-pin / set-location) | [`src/App.tsx`](src/App.tsx) |
 
-**Ephemerality.** There is no cron job. Clients fetch beacons with `iqamah_time` between 15 minutes ago and 2 hours ahead. Markers hide locally 10 minutes after iqamah. A beacon is shown as *Upcoming* (green countdown) before iqamah and *Praying now* (amber) for the 10 minutes after.
+**Ephemerality.** Clients fetch beacons with `iqamah_time` between 45 minutes ago and 2 hours ahead. A beacon shows as *Upcoming* (green countdown) before its start time and *Praying now* (amber) afterwards. Its marker hides 10 minutes after the start, or 40 minutes for Jumu'ah, to cover the khutbah.
+
+**Cleanup.** A `pg_cron` job (`prune-expired-beacons`, migration 0004) runs hourly. It deletes beacons more than a day past their start time, beacons hidden by reports more than a day ago, and old rate-limit records. A host cancelling deletes the row immediately. Deleting a beacon cascades to its tokens and reports.
 
 **Live updates.** Clients subscribe to Supabase Realtime changes on `prayers`, so new beacons, +1s and cancellations show up on every phone within about a second. Each time the connection opens or reconnects, the app refetches to catch anything it missed. It also polls every 60 seconds as a backup.
 
@@ -85,4 +87,3 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 - **Map tiles.** Tiles come from OpenStreetMap's public servers, which are fine for development but have a [usage policy](https://operations.osmfoundation.org/policies/tiles/). Use a keyed provider (MapTiler, Stadia, Mapbox) in production.
 - **Link previews.** Every shared link shows the same generic WhatsApp/iMessage preview. A per-beacon preview (prayer, place, time) would need an edge function that renders the meta tags.
 - **Offline.** It's installable (manifest + icon), but there's no service worker. The app needs live data anyway.
-- Rows are never deleted. The migration includes an optional `pg_cron` snippet for pruning.
