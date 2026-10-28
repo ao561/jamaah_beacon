@@ -50,3 +50,44 @@ export function updateMemberships(update: (memberships: Memberships) => void): M
   }
   return trimmed;
 }
+
+// Regular prayers this device hosts: regular id -> host token. The same token controls
+// every day's beacon, so membership of those beacons is derived rather than stored.
+
+export type RegularHosts = Record<string, string>;
+
+const REGULAR_KEY = 'regular_hosts';
+
+export function getRegularHosts(): RegularHosts {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(REGULAR_KEY) ?? '{}');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter(([, token]) => typeof token === 'string'));
+  } catch {
+    return {};
+  }
+}
+
+export function updateRegularHosts(update: (hosts: RegularHosts) => void): RegularHosts {
+  const hosts = getRegularHosts();
+  update(hosts);
+  const trimmed = Object.fromEntries(Object.entries(hosts).slice(-MAX_ENTRIES));
+  try {
+    localStorage.setItem(REGULAR_KEY, JSON.stringify(trimmed));
+  } catch {
+    // Not remembered across reloads.
+  }
+  return trimmed;
+}
+
+/** This device's role for a beacon, including days of regular prayers it hosts. */
+export function membershipFor(
+  beacon: { id: string; regular_id?: string | null },
+  memberships: Memberships = getMemberships(),
+  regularHosts: RegularHosts = getRegularHosts(),
+): Membership | undefined {
+  const own = memberships[beacon.id];
+  if (own) return own;
+  const regularToken = beacon.regular_id ? regularHosts[beacon.regular_id] : undefined;
+  return regularToken ? { role: 'host', token: regularToken } : undefined;
+}

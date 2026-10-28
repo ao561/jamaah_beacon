@@ -14,6 +14,16 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Jama'ah Beacon</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a white flash (see src/lib/theme.ts).
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

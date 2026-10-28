@@ -68,23 +68,27 @@ export function MapView({
         </>
       )}
 
-      {beacons.map((b) => (
-        <Marker
-          key={b.id}
-          position={[b.latitude, b.longitude]}
-          title={`${SALAH_LABELS[b.salah_name]} at ${b.location_name}`}
-          zIndexOffset={b.id === selectedId ? 500 : 0}
-          icon={beaconIcon({
-            salah: b.salah_name,
-            status: getStatus(b, now),
-            count: b.attendee_count,
-            selected: b.id === selectedId,
-            pending: Boolean(b.pending),
-            confirm: b.id === confirmId,
-          })}
-          eventHandlers={{ click: () => onSelect(b) }}
-        />
-      ))}
+      {beacons.map((b) => {
+        const title = `${SALAH_LABELS[b.salah_name]} at ${b.location_name}`;
+        return (
+          <Marker
+            // react-leaflet can't update a marker's title in place, so an edited title remounts it.
+            key={`${b.id}|${title}`}
+            position={[b.latitude, b.longitude]}
+            title={title}
+            zIndexOffset={b.id === selectedId ? 500 : 0}
+            icon={beaconIcon({
+              salah: b.salah_name,
+              status: getStatus(b, now),
+              count: b.attendee_count,
+              selected: b.id === selectedId,
+              pending: Boolean(b.pending),
+              confirm: b.id === confirmId,
+            })}
+            eventHandlers={{ click: () => onSelect(b) }}
+          />
+        );
+      })}
 
       {draftLocation && (
         <Marker

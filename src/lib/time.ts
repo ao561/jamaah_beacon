@@ -31,7 +31,11 @@ export function formatClock(iso: string | Date): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export type IqamahChoice = { kind: 'offset'; minutes: number } | { kind: 'manual'; value: string };
+export type IqamahChoice =
+  | { kind: 'offset'; minutes: number }
+  | { kind: 'manual'; value: string }
+  /** Editing: keep the beacon's existing time. */
+  | { kind: 'fixed'; iso: string };
 
 /**
  * Resolves the host's choice to a timestamp. A manual "HH:mm" earlier than now
@@ -39,9 +43,24 @@ export type IqamahChoice = { kind: 'offset'; minutes: number } | { kind: 'manual
  */
 export function resolveIqamah(choice: IqamahChoice, now = new Date()): Date | null {
   if (choice.kind === 'offset') return addMinutes(now, choice.minutes);
+  if (choice.kind === 'fixed') return new Date(choice.iso);
 
   const match = /^(\d{1,2}):(\d{2})$/.exec(choice.value);
   if (!match) return null;
   const candidate = set(now, { hours: Number(match[1]), minutes: Number(match[2]), seconds: 0, milliseconds: 0 });
   return isBefore(candidate, subMinutes(now, 1)) ? addDays(candidate, 1) : candidate;
+}
+
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** [1,2,3,4,5] -> "Mon–Fri", [5] -> "Fridays", [0,6] -> "Weekends", all -> "Every day". */
+export function formatDays(days: readonly number[]): string {
+  const set = [...new Set(days)].sort((a, b) => a - b);
+  const key = set.join(',');
+  if (key === '0,1,2,3,4,5,6') return 'Every day';
+  if (key === '1,2,3,4,5') return 'Mon–Fri';
+  if (key === '0,6') return 'Weekends';
+  if (set.length === 1) return `${DAY_LONG[set[0]]}s`;
+  return set.map((d) => DAY_SHORT[d]).join(', ');
 }

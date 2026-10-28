@@ -19,7 +19,16 @@ export interface Prayer {
   created_at: string;
   /** Set once enough reports come in; hidden beacons are treated as removed. */
   hidden_at?: string | null;
+  /** Set when the host edits the beacon. */
+  updated_at?: string | null;
+  /** The regular (weekly repeating) prayer this beacon was created from, if any. */
+  regular_id?: string | null;
+  /** Weekdays it repeats on (0 = Sunday); null once the host stops repeating. */
+  repeat_days?: number[] | null;
 }
+
+/** Fields a host can change after posting. */
+export type PrayerChanges = Partial<NewPrayer>;
 
 export type NewPrayer = Pick<
   Prayer,

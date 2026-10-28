@@ -12,7 +12,7 @@ interface Props {
 export function CountdownTimer({ iqamahTime, salah, status, now }: Props) {
   const remaining = msUntil(iqamahTime, now);
   const tone =
-    status === 'upcoming' ? 'bg-emerald-50 text-emerald-800' : status === 'in_progress' ? 'bg-amber-50 text-amber-800' : 'bg-slate-100 text-slate-500';
+    status === 'upcoming' ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300' : status === 'in_progress' ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400';
 
   return (
     <div className={`flex items-end justify-between rounded-2xl px-4 py-3 ${tone}`}>

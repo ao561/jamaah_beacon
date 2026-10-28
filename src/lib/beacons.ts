@@ -2,7 +2,7 @@ import { addMinutes } from 'date-fns';
 import { FALLBACK_CENTER, LOOKAHEAD_MINUTES, LOOKBACK_MINUTES } from './config';
 import type { ReportReason } from './reports';
 import { supabase } from './supabase';
-import type { NewPrayer, Prayer } from './types';
+import type { NewPrayer, Prayer, PrayerChanges } from './types';
 
 export interface ChangeHandlers {
   onUpsert: (row: Prayer) => void;
@@ -14,6 +14,16 @@ export interface ChangeHandlers {
 export interface BeaconApi {
   fetchActive(): Promise<Prayer[]>;
   create(input: NewPrayer): Promise<{ prayer: Prayer; hostToken: string }>;
+  /** Creates today's beacon and a weekly template that repeats it on `days` (0 = Sunday). */
+  createRegular(
+    input: NewPrayer,
+    days: number[],
+    timeZone: string,
+  ): Promise<{ prayer: Prayer; hostToken: string; regularId: string }>;
+  /** Host-only; returns the updated beacon. */
+  update(id: string, token: string, changes: PrayerChanges): Promise<Prayer>;
+  /** Host-only; stops future days of a regular prayer. */
+  stopRegular(regularId: string, token: string): Promise<boolean>;
   /** Returns null if the beacon has ended. */
   join(id: string): Promise<{ count: number; token: string } | null>;
   /** Returns the new count, or null if the token was not accepted. */
@@ -60,6 +70,25 @@ function createSupabaseApi(client: NonNullable<typeof supabase>): BeaconApi {
       if (error) throw error;
       const { prayer, host_token } = data as { prayer: Prayer; host_token: string };
       return { prayer, hostToken: host_token };
+    },
+
+    async createRegular(input, days, timeZone) {
+      const { data, error } = await client.rpc('create_regular_prayer', { beacon: input, days, tz: timeZone });
+      if (error) throw error;
+      const { prayer, host_token, regular_id } = data as { prayer: Prayer; host_token: string; regular_id: string };
+      return { prayer, hostToken: host_token, regularId: regular_id };
+    },
+
+    async update(id, token, changes) {
+      const { data, error } = await client.rpc('update_prayer', { prayer_id: id, token, changes });
+      if (error) throw error;
+      return data as Prayer;
+    },
+
+    async stopRegular(regularId, token) {
+      const { data, error } = await client.rpc('stop_regular_prayer', { regular_id: regularId, token });
+      if (error) throw error;
+      return data === true;
     },
 
     async join(id) {
@@ -151,6 +180,12 @@ function createDemoApi(): BeaconApi {
     },
   ];
   const tokens = new Map<string, { id: string; role: 'host' | 'attendee' }>();
+  const regularTokens = new Map<string, string>(); // regular id -> host token
+  const isHost = (id: string, token: string) => {
+    const row = rows.find((r) => r.id === id);
+    const issued = tokens.get(token);
+    return (issued?.id === id && issued.role === 'host') || (!!row?.regular_id && regularTokens.get(row.regular_id) === token);
+  };
   const issueToken = (id: string, role: 'host' | 'attendee') => {
     const token = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     tokens.set(token, { id, role });
@@ -174,6 +209,33 @@ function createDemoApi(): BeaconApi {
       return { prayer: { ...row }, hostToken: issueToken(row.id, 'host') };
     },
 
+    async createRegular(input, days, timeZone) {
+      const { prayer, hostToken } = await this.create(input);
+      void timeZone; // The demo doesn't schedule future days.
+      const regularId = `demo-regular-${Date.now()}`;
+      regularTokens.set(regularId, hostToken);
+      const row = rows.find((r) => r.id === prayer.id)!;
+      Object.assign(row, { regular_id: regularId, repeat_days: [...new Set(days)].sort() });
+      return { prayer: { ...row }, hostToken, regularId };
+    },
+
+    async update(id, token, changes) {
+      await latency();
+      const row = rows.find((r) => r.id === id);
+      if (!row) throw new Error("This jama'ah no longer exists.");
+      if (!isHost(id, token)) throw new Error("Only the host can edit this jama'ah.");
+      Object.assign(row, changes, { updated_at: new Date().toISOString() });
+      return { ...row };
+    },
+
+    async stopRegular(regularId, token) {
+      await latency();
+      if (regularTokens.get(regularId) !== token) return false;
+      regularTokens.delete(regularId);
+      rows.filter((r) => r.regular_id === regularId).forEach((r) => (r.repeat_days = null));
+      return true;
+    },
+
     async join(id) {
       await latency();
       const row = rows.find((r) => r.id === id);
@@ -194,9 +256,8 @@ function createDemoApi(): BeaconApi {
 
     async cancel(id, token) {
       await latency();
-      const issued = tokens.get(token);
       const index = rows.findIndex((r) => r.id === id);
-      if (index === -1 || issued?.id !== id || issued.role !== 'host') return false;
+      if (index === -1 || !isHost(id, token)) return false;
       rows.splice(index, 1);
       return true;
     },

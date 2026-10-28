@@ -29,19 +29,19 @@ export function PrayerSettingsPanel({ settings, saved, coords, date, onChange, o
   const ownHighLatitudeRule = usesOwnHighLatitudeRule(settings.method);
 
   return (
-    <div className="mt-2 space-y-3 rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+    <div className="mt-2 space-y-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3 ring-1 ring-slate-200 dark:ring-slate-700">
       <div>
-        <p className="text-sm font-semibold text-slate-800">Prayer time calculation</p>
-        <p className="text-xs text-slate-500">
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Prayer time calculation</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Match the timetable your community follows. Changes are saved on this device for the area around this pin
           (about {AREA_RADIUS_KM} km).
         </p>
         <p className="mt-1.5 flex items-center justify-between gap-2 text-xs">
-          <span className={saved ? 'font-medium text-emerald-700' : 'text-slate-500'}>
+          <span className={saved ? 'font-medium text-emerald-700 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'}>
             {saved ? 'Using your saved settings for this area' : 'Using the default (Moonsighting Committee)'}
           </span>
           {saved && (
-            <button type="button" onClick={onReset} className="shrink-0 font-semibold text-slate-600 underline-offset-2 hover:underline">
+            <button type="button" onClick={onReset} className="shrink-0 font-semibold text-slate-600 dark:text-slate-400 underline-offset-2 hover:underline">
               Reset to default
             </button>
           )}
@@ -88,12 +88,12 @@ export function PrayerSettingsPanel({ settings, saved, coords, date, onChange, o
       </Select>
 
       <div>
-        <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">Today at this pin</p>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-white p-3 text-sm ring-1 ring-slate-200">
+        <p className="mb-1 text-xs font-semibold tracking-wide text-slate-500 dark:text-slate-400 uppercase">Today at this pin</p>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-white dark:bg-slate-900 p-3 text-sm ring-1 ring-slate-200 dark:ring-slate-700">
           {times.map(({ name, time, wide }) => (
             <div key={name} className={`flex justify-between gap-2 ${wide ? 'col-span-2' : ''}`}>
-              <dt className="text-slate-500">{name}</dt>
-              <dd className="font-medium text-slate-900 tabular-nums">{time}</dd>
+              <dt className="text-slate-500 dark:text-slate-400">{name}</dt>
+              <dd className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">{time}</dd>
             </div>
           ))}
         </dl>
@@ -102,7 +102,7 @@ export function PrayerSettingsPanel({ settings, saved, coords, date, onChange, o
       <button
         type="button"
         onClick={onDone}
-        className="w-full rounded-xl bg-white py-2 text-sm font-semibold text-slate-800 ring-1 ring-slate-200 hover:bg-slate-100"
+        className="w-full rounded-xl bg-white dark:bg-slate-900 py-2 text-sm font-semibold text-slate-800 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
       >
         Done
       </button>
@@ -127,16 +127,16 @@ function Select({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold text-slate-700">{label}</span>
+      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</span>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full disabled:bg-slate-100 disabled:text-slate-400 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+        className="mt-1 w-full disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-500 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-base outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
       >
         {children}
       </select>
-      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">{hint}</span>}
     </label>
   );
 }

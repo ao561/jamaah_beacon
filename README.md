@@ -16,7 +16,7 @@ With no Supabase credentials the app runs in **demo mode**: three mock beacons a
 ### Connect Supabase
 
 1. Create a Supabase project.
-2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
+2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql), then [`0005_edit_and_regular_prayers.sql`](supabase/migrations/0005_edit_and_regular_prayers.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
 3. `cp .env.example .env.local` and fill in the project URL and anon/publishable key (Project settings → API).
 4. Restart `npm run dev`.
 
@@ -49,7 +49,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Ephemerality.** Clients fetch beacons with `iqamah_time` between 45 minutes ago and 2 hours ahead. A beacon shows as *Upcoming* (green countdown) before its start time and *Praying now* (amber) afterwards. Its marker hides 10 minutes after the start, or 40 minutes for Jumu'ah, to cover the khutbah.
 
-**Cleanup.** A `pg_cron` job (`prune-expired-beacons`, migration 0004) runs hourly. It deletes beacons more than a day past their start time, beacons hidden by reports more than a day ago, and old rate-limit records. A host cancelling deletes the row immediately. Deleting a beacon cascades to its tokens and reports.
+**Cleanup.** A `pg_cron` job (`prune-expired-beacons`, migrations 0004 and 0005) runs hourly. It deletes beacons more than a day past their start time, beacons hidden by reports more than a day ago, stopped or expired regular templates once they have no recent beacons, and old skip and rate-limit records. A host cancelling deletes the row immediately. Deleting a beacon cascades to its tokens and reports.
 
 **Live updates.** Clients subscribe to Supabase Realtime changes on `prayers`, so new beacons, +1s and cancellations show up on every phone within about a second. Each time the connection opens or reconnects, the app refetches to catch anything it missed. It also polls every 60 seconds as a backup.
 
@@ -60,7 +60,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 **Reports.** Anyone except the host can report a beacon: not a real jama'ah, wrong location, or inappropriate. The reporter stops seeing it immediately. Once 3 different devices report it, `hidden_at` is set and it disappears for everyone via realtime. Devices are identified by a random `device_id` in `localStorage`.
 
 **Database guardrails** (the migrations):
-- The anon role can only `select` from `prayers`. Every write goes through four `security definer` functions: `create_prayer`, `join_prayer`, `leave_prayer` and `cancel_prayer`.
+- The anon role can only `select` from `prayers`. Every write goes through `security definer` functions: `create_prayer`, `create_regular_prayer`, `update_prayer`, `join_prayer`, `leave_prayer`, `cancel_prayer`, `stop_regular_prayer` and `report_prayer`.
 - Tokens are stored only as SHA-256 hashes, in `prayer_tokens`. RLS is on and there are no policies, so nobody can read it through the API.
 - A new beacon's iqamah must fall within the next ~2 hours. Joins are refused 15 minutes after iqamah. The count never drops below 1, since the host counts.
 - Reads only return beacons from the last hour onwards, so old location history can't be scraped.
@@ -68,6 +68,12 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 - Text length and lat/lng range checks.
 
 **Host flow.** The pin defaults to your GPS fix. If accuracy is worse than ±50 m, or location is unavailable, the form prompts you to drag the pin. Submitting closes the form and shows a translucent pending pin while the write is in flight. If the write fails, the form reopens with your input intact. Once the beacon is live, its drawer opens with **Invite people** (the share sheet) and **Cancel this jama'ah**, which takes two taps.
+
+**Editing.** The host's panel has **Running late? +5 / +10 min** and **Edit details**. Edit details reopens the form pre-filled, with a "Keep 13:15" time option, so changing the directions doesn't move the time. Edits go through `update_prayer`, which needs the host token, and reach everyone via realtime. Attendees, and anyone viewing the beacon, get a toast when its time or place changes. The panel then shows "Updated by the host at …".
+
+**Regular jama'ahs.** "Repeat every week" in the host form saves a weekly template in `regular_prayers` (days, local time, time zone). Every 5 minutes, a `pg_cron` job (`materialize-regular-prayers`) creates an ordinary beacon for any template starting within the next 2 hours, at most one per template per local day. So joining, sharing, reporting and realtime work unchanged. The host's single token works for every day's beacon. **Cancel today only** records a skip so that day isn't recreated, and **Stop repeating** deactivates the template. A template expires 30 days after its last +1, and gets deactivated if one of its beacons is hidden by reports.
+
+**Dark mode.** The header button cycles through System (the default, which follows the device), Light and Dark. The choice is saved in `localStorage` (`theme`). An inline script in `index.html` applies it before first paint, so there's no white flash. Components use Tailwind `dark:` variants keyed off a `.dark` class on `<html>`. OpenStreetMap has no dark tiles, so in dark mode the tile layer is recoloured with a CSS filter, and markers keep their real colours.
 
 **Share links.** While a beacon is open, the address bar shows `…/?b=<id>`. Opening that link selects the beacon. If it has ended or been cancelled, the app says so.
 

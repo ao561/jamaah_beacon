@@ -14,7 +14,7 @@ export function FloatingActionBar({ hasLocation, publishing, onLocate, onHost }:
         type="button"
         onClick={onLocate}
         aria-label={hasLocation ? 'Centre on my location' : 'Set my location'}
-        className="pointer-events-auto grid size-12 place-items-center rounded-full bg-white text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-slate-50 active:scale-95"
+        className="pointer-events-auto grid size-12 place-items-center rounded-full bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 shadow-lg ring-1 ring-black/5 dark:ring-white/10 transition hover:bg-slate-50 dark:hover:bg-slate-800 active:scale-95"
       >
         {hasLocation ? <LocateFixed className="size-5" /> : <LocateOff className="size-5" />}
       </button>

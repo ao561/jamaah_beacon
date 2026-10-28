@@ -19,7 +19,7 @@ function Badge({ on, icon, label }: { on: boolean; icon: ReactNode; label: strin
   return (
     <li
       className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${
-        on ? 'bg-sky-50 text-sky-800 ring-1 ring-sky-200' : 'bg-slate-50 text-slate-400 line-through ring-1 ring-slate-200'
+        on ? 'bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 ring-1 ring-sky-200 dark:ring-sky-800' : 'bg-slate-50 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 line-through ring-1 ring-slate-200 dark:ring-slate-700'
       }`}
     >
       {icon}
