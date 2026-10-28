@@ -5,8 +5,10 @@ export type Role = 'host' | 'attendee';
 
 export interface Membership {
   role: Role;
-  /** null while a join is in flight, or for joins made before tokens existed. */
+  /** null while a join is in flight, for joins made before tokens existed, or when via an account. */
   token: string | null;
+  /** Known from the signed-in account rather than this device; the server checks it on every action. */
+  viaAccount?: boolean;
 }
 
 export type Memberships = Record<string, Membership>;

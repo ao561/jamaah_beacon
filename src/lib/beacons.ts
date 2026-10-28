@@ -20,20 +20,21 @@ export interface BeaconApi {
     days: number[],
     timeZone: string,
   ): Promise<{ prayer: Prayer; hostToken: string; regularId: string }>;
+  // Host/attendee tokens are null when acting through a signed-in account instead of this device.
   /** Host-only; returns the updated beacon. */
-  update(id: string, token: string, changes: PrayerChanges): Promise<Prayer>;
+  update(id: string, token: string | null, changes: PrayerChanges): Promise<Prayer>;
   /** Host-only; stops future days of a regular prayer. */
-  stopRegular(regularId: string, token: string): Promise<boolean>;
-  /** Returns null if the beacon has ended. */
-  join(id: string): Promise<{ count: number; token: string } | null>;
+  stopRegular(regularId: string, token: string | null): Promise<boolean>;
+  /** Returns null if the beacon has ended. Token is null if this account had already joined. */
+  join(id: string): Promise<{ count: number; token: string | null } | null>;
   /** Returns the new count, or null if the token was not accepted. */
-  leave(id: string, token: string): Promise<number | null>;
+  leave(id: string, token: string | null): Promise<number | null>;
   /** Returns whether the beacon was deleted. */
-  cancel(id: string, token: string): Promise<boolean>;
+  cancel(id: string, token: string | null): Promise<boolean>;
   /** Returns whether this report pushed the beacon over the hide threshold. */
   report(id: string, deviceId: string, reason: ReportReason): Promise<boolean>;
   /** Host-only; a base64 JPEG/WebP, or null to remove it. */
-  setPhoto(id: string, token: string, imageBase64: string | null): Promise<void>;
+  setPhoto(id: string, token: string | null, imageBase64: string | null): Promise<void>;
   /** A data: URL, or null if there's no (visible) photo. */
   getPhoto(id: string): Promise<string | null>;
   /** Anonymous usage counter. Never throws. */
@@ -103,7 +104,7 @@ function createSupabaseApi(client: NonNullable<typeof supabase>): BeaconApi {
       const { data, error } = await client.rpc('join_prayer', { prayer_id: id });
       if (error) throw error;
       if (!data) return null;
-      const { attendee_count, token } = data as { attendee_count: number; token: string };
+      const { attendee_count, token } = data as { attendee_count: number; token: string | null };
       return { count: attendee_count, token };
     },
 
@@ -205,7 +206,8 @@ function createDemoApi(): BeaconApi {
   const tokens = new Map<string, { id: string; role: 'host' | 'attendee' }>();
   const regularTokens = new Map<string, string>(); // regular id -> host token
   const photos = new Map<string, string>(); // beacon id -> data URL
-  const isHost = (id: string, token: string) => {
+  const isHost = (id: string, token: string | null) => {
+    if (!token) return false;
     const row = rows.find((r) => r.id === id);
     const issued = tokens.get(token);
     return (issued?.id === id && issued.role === 'host') || (!!row?.regular_id && regularTokens.get(row.regular_id) === token);
@@ -270,10 +272,10 @@ function createDemoApi(): BeaconApi {
 
     async leave(id, token) {
       await latency();
-      const issued = tokens.get(token);
+      const issued = token ? tokens.get(token) : undefined;
       const row = rows.find((r) => r.id === id);
       if (!row || issued?.id !== id || issued.role !== 'attendee') return null;
-      tokens.delete(token);
+      tokens.delete(token!);
       row.attendee_count = Math.max(1, row.attendee_count - 1);
       return row.attendee_count;
     },

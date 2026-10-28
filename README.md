@@ -16,9 +16,19 @@ With no Supabase credentials the app runs in **demo mode**: three mock beacons a
 ### Connect Supabase
 
 1. Create a Supabase project.
-2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql), then [`0005_edit_and_regular_prayers.sql`](supabase/migrations/0005_edit_and_regular_prayers.sql), then [`0006_photos_and_stats.sql`](supabase/migrations/0006_photos_and_stats.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
+2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql), then [`0005_edit_and_regular_prayers.sql`](supabase/migrations/0005_edit_and_regular_prayers.sql), then [`0006_photos_and_stats.sql`](supabase/migrations/0006_photos_and_stats.sql), then [`0007_accounts.sql`](supabase/migrations/0007_accounts.sql), then [`0008_account_grants.sql`](supabase/migrations/0008_account_grants.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
 3. `cp .env.example .env.local` and fill in the project URL and anon/publishable key (Project settings → API).
 4. Restart `npm run dev`.
+
+### Accounts (optional sign-in)
+
+Accounts are optional. Without this setup the app works as before, and only the sign-in screen fails. In the Supabase dashboard:
+
+1. **Authentication → URL Configuration:** set the Site URL to your deployed URL, e.g. `https://jammah-beacon.vercel.app`. Add redirect URLs for it and for local dev: `https://jammah-beacon.vercel.app/**` and `http://localhost:5173/**`.
+2. **Authentication → Emails → Magic Link** template: add the code, e.g. `<p>Or enter this code: <strong>{{ .Token }}</strong></p>`. Home-screen apps on iPhone don't share storage with Safari, so typing the code is the reliable way to sign in there.
+3. **Google:** create an OAuth client (type "Web application") in Google Cloud Console → APIs & Services → Credentials. Its authorised redirect URI is `https://<project-ref>.supabase.co/auth/v1/callback`. Paste the client ID and secret into **Authentication → Providers → Google**.
+4. **Email sign-in is hidden by default**, because Supabase's built-in sender only delivers to your own project team. Once a custom sender is set up (step 5), set `VITE_EMAIL_SIGNIN=true` in your env (locally and in Vercel) and redeploy.
+5. **Custom email sender:** Supabase's built-in sender only sends a few emails an hour. Connect a provider such as Resend under **Authentication → Emails → SMTP Settings**.
 
 Dependencies, if you're installing into another project:
 
@@ -81,7 +91,15 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Welcome and install.** First-time visitors get a short skippable intro: what it is, how to join, how to host. On phones, and on browsers that can install apps, it adds an "Add to home screen" step. The location permission prompt waits until the intro is done. Visitors arriving on a shared `?b=` link skip the intro until their next visit. The header's **?** button reopens it. Installing uses Chrome's `beforeinstallprompt` where it's available. Otherwise it shows instructions for iPhone (Share → Add to Home Screen), Android (browser menu), or in-app browsers like WhatsApp (open in Safari/Chrome first). After someone first joins or hosts, a one-time card offers the same help. The PNG app icons in `public/` (192, 512, maskable 512, and a 180 Apple touch icon) are generated from `icon.svg`.
 
-**Dark mode.** The header button cycles through System (the default, which follows the device), Light and Dark. The choice is saved in `localStorage` (`theme`). An inline script in `index.html` applies it before first paint, so there's no white flash. Components use Tailwind `dark:` variants keyed off a `.dark` class on `<html>`. OpenStreetMap has no dark tiles, so in dark mode the tile layer is recoloured with a CSS filter, and markers keep their real colours.
+**Accounts.** Accounts are optional, signing in with an email link or 6-digit code, or with Google. Signing in requires explicit consent, because which prayers someone attends can reveal their religion, special-category data under UK GDPR. A short privacy notice sits on the sign-in screen. With an account:
+- beacons and regular spots are owned by the account (`private.prayer_owners`, `regular_prayers.owner_id`), so they can be managed from any device
+- joins are linked to the account, so it can't be double-counted across devices, and "You're counted in" shows everywhere
+- beacons show "Hosted by <name>", where the name is optional, plus a **Verified** badge. "Verified" means a confirmed email or Google account, not identity vetting
+- **My jama'ahs** lists what you're hosting now, your regular spots (stop and restart), and what you joined recently
+
+Device tokens still work alongside accounts. Only the display name is ever public. Emails stay in `auth.users`, and the host and attendee links live in tables the API can't read. **Delete account** removes the user, their profile and all links. Their +1s remain as anonymous counts, and their regular spots stop. See `delete_my_account()` in migration 0007.
+
+**Dark mode.** Light by default. The moon/sun button in the header switches between light and dark, and the choice is saved in `localStorage` (`theme`). An inline script in `index.html` applies a saved dark theme before first paint, so there's no white flash. Components use Tailwind `dark:` variants keyed off a `.dark` class on `<html>`. OpenStreetMap has no dark tiles, so in dark mode the tile layer is recoloured with a CSS filter, and markers keep their real colours.
 
 **Share links.** While a beacon is open, the address bar shows `…/?b=<id>`. Opening that link selects the beacon. If it has ended or been cancelled, the app says so.
 

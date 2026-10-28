@@ -1,4 +1,4 @@
-import { Check, Flag, LoaderCircle, MapPin, Navigation, Pencil, Repeat, Share2, Users, X } from 'lucide-react';
+import { BadgeCheck, Check, Flag, LoaderCircle, MapPin, Navigation, Pencil, Repeat, Share2, Users, X } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNow } from '../hooks/useNow';
 import { usePhoto } from '../hooks/usePhoto';
@@ -67,6 +67,8 @@ function DrawerBody({
   const status = getStatus(beacon, now);
   const coords: Coords = [beacon.latitude, beacon.longitude];
   const isHost = membership?.role === 'host';
+  // A device token or the signed-in account; either way the server re-checks.
+  const canManage = Boolean(membership?.token || membership?.viaAccount);
   const pending = Boolean(beacon.pending);
   const repeating = beacon.repeat_days && beacon.repeat_days.length > 0 ? beacon.repeat_days : null;
 
@@ -94,6 +96,19 @@ function DrawerBody({
             )}
           </div>
           {userLocation && <p className="text-sm text-slate-500 dark:text-slate-400">{formatDistance(distanceMeters(userLocation, coords))}</p>}
+          {(beacon.host_name || beacon.host_verified) && (
+            <p className="mt-0.5 flex items-center gap-1 text-sm text-slate-700 dark:text-slate-300">
+              {beacon.host_name && <span>Hosted by {beacon.host_name}</span>}
+              {beacon.host_verified && (
+                <span
+                  className="flex items-center gap-0.5 font-semibold text-emerald-700 dark:text-emerald-400"
+                  title="The host is signed in with a confirmed email or Google account"
+                >
+                  <BadgeCheck className="size-4" aria-hidden /> {beacon.host_name ? 'Verified' : 'Verified host'}
+                </span>
+              )}
+            </p>
+          )}
           {beacon.updated_at && <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Updated by the host at {formatClock(beacon.updated_at)}</p>}
         </div>
         <button
@@ -160,7 +175,7 @@ function DrawerBody({
         </a>
       </div>
 
-      {isHost && membership.token && !pending && (
+      {isHost && canManage && !pending && (
         <div className="space-y-2 rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-3">
           {status !== 'ended' && (
             <div className="flex items-center gap-2">
@@ -203,7 +218,7 @@ function DrawerBody({
           )}
         </div>
       )}
-      {membership?.role === 'attendee' && membership.token && (
+      {membership?.role === 'attendee' && canManage && (
         <ConfirmTextButton
           label="Can't make it? Remove me"
           confirmLabel="Tap again to remove your +1"

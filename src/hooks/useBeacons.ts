@@ -11,6 +11,7 @@ import {
   type Memberships,
   type RegularHosts,
 } from '../lib/memberships';
+import { getMyMemberships } from '../lib/account';
 import { addReported, getDeviceId, getReported, type ReportReason } from '../lib/reports';
 import type { Beacon, NewPrayer, Prayer, PrayerChanges } from '../lib/types';
 
@@ -28,14 +29,18 @@ export interface Repeat {
   timeZone: string;
 }
 
+type ServerRoles = Record<string, 'host' | 'attendee'>;
+
 interface Options {
+  /** The signed-in user, if any: their hosted/joined beacons are then recognised on any device. */
+  userId?: string | null;
   /** A beacon disappeared because it was cancelled (possibly by this device) or hidden after reports. */
   onRemoteRemoval?: (beacon: Beacon, reason: RemovalReason) => void;
   /** A beacon's time or place changed (possibly by this device). */
   onRemoteChange?: (before: Beacon, after: Prayer) => void;
 }
 
-export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
+export function useBeacons({ userId = null, onRemoteRemoval, onRemoteChange }: Options = {}) {
   const [allBeacons, setBeacons] = useState<Beacon[]>([]);
   const [reported, setReported] = useState<Set<string>>(getReported);
   // Reporting hides a beacon for this device immediately.
@@ -43,6 +48,36 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [memberships, setMembershipsState] = useState<Memberships>(getMemberships);
   const [regularHosts, setRegularHostsState] = useState<RegularHosts>(getRegularHosts);
+  const [serverRoles, setServerRoles] = useState<ServerRoles>({});
+  // Read through a ref so the stable callbacks below see sign-ins and sign-outs.
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+  const serverRolesRef = useRef(serverRoles);
+  serverRolesRef.current = serverRoles;
+
+  const refreshServerRoles = useCallback(async () => {
+    if (!userId) return setServerRoles({});
+    try {
+      setServerRoles(await getMyMemberships());
+    } catch (err) {
+      console.error('Failed to load account memberships', err);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    void refreshServerRoles();
+  }, [refreshServerRoles]);
+
+  const refreshServerRolesRef = useRef(refreshServerRoles);
+  refreshServerRolesRef.current = refreshServerRoles;
+
+  /** Device membership first (it has the token), then the account's role on the server. */
+  const resolveRole = (beacon: Beacon | undefined, id: string): Membership | undefined => {
+    const local = beacon ? membershipFor(beacon) : getMemberships()[id];
+    if (local) return local;
+    const role = serverRolesRef.current[id];
+    return role ? { role, token: null, viaAccount: true } : undefined;
+  };
 
   const beaconsRef = useRef(beacons);
   beaconsRef.current = beacons;
@@ -68,6 +103,8 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
       // Keep optimistic inserts that the server hasn't confirmed yet.
       setBeacons((prev) => [...rows, ...prev.filter((b) => b.pending)]);
       setLoadState('ready');
+      // The account may have hosted or joined something on another device meanwhile.
+      void refreshServerRolesRef.current();
     } catch (err) {
       console.error('Failed to fetch beacons', err);
       // A failed background refresh keeps showing the last good data.
@@ -82,6 +119,7 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
       if (document.visibilityState === 'visible') {
         setMembershipsState(getMemberships());
         setRegularHostsState(getRegularHosts());
+        void refreshServerRolesRef.current();
         void refresh();
       }
     };
@@ -97,6 +135,8 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
       onUpsert: (row) => {
         if (row.hidden_at) return remove(row.id, 'hidden');
         const before = beaconsRef.current.find((b) => b.id === row.id);
+        // A new beacon might be this account's, hosted from another device.
+        if (!before) void refreshServerRolesRef.current();
         if (before && (before.iqamah_time !== row.iqamah_time || before.latitude !== row.latitude || before.longitude !== row.longitude)) {
           onRemoteChangeRef.current?.(before, row);
         }
@@ -134,6 +174,7 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
         editMemberships((m) => {
           m[prayer.id] = { role: 'host', token: hostToken };
         });
+        if (userIdRef.current) setServerRoles((r) => ({ ...r, [prayer.id]: 'host' }));
         if (regularId) {
           setRegularHostsState(
             updateRegularHosts((h) => {
@@ -154,7 +195,7 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
     async (id: string): Promise<void> => {
       // localStorage is the source of truth, so a second tab can't double-count either.
       const beacon = beaconsRef.current.find((b) => b.id === id);
-      if (isPendingId(id) || (beacon ? membershipFor(beacon) : getMemberships()[id])) return;
+      if (isPendingId(id) || resolveRole(beacon, id)) return;
 
       editMemberships((m) => {
         m[id] = { role: 'attendee', token: null };
@@ -164,6 +205,7 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
         const result = await beaconApi.join(id);
         if (!result) throw new Error("This jama'ah has already ended.");
         setCount(id, () => result.count);
+        if (userIdRef.current) setServerRoles((r) => ({ ...r, [id]: 'attendee' }));
         editMemberships((m) => {
           m[id] = { role: 'attendee', token: result.token };
         });
@@ -180,12 +222,15 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
 
   const leaveBeacon = useCallback(
     async (id: string): Promise<void> => {
-      const membership = getMemberships()[id];
-      if (membership?.role !== 'attendee' || !membership.token) return;
+      const membership = resolveRole(beaconsRef.current.find((b) => b.id === id), id);
+      // Without a device token, only a signed-in account can undo its own +1.
+      if (membership?.role !== 'attendee' || (!membership.token && !userIdRef.current)) return;
 
+      const local = getMemberships()[id];
       editMemberships((m) => {
         delete m[id];
       });
+      setServerRoles(({ [id]: _removed, ...rest }) => rest);
       setCount(id, (c) => c - 1);
       try {
         const count = await beaconApi.leave(id, membership.token);
@@ -193,19 +238,20 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
         setCount(id, () => count);
       } catch (err) {
         editMemberships((m) => {
-          m[id] = membership;
+          if (local) m[id] = local;
         });
+        void refreshServerRoles();
         setCount(id, (c) => c + 1);
         throw err;
       }
     },
-    [editMemberships, setCount],
+    [editMemberships, setCount, refreshServerRoles],
   );
 
-  const hostTokenFor = (id: string): string => {
-    const beacon = beaconsRef.current.find((b) => b.id === id);
-    const membership = beacon ? membershipFor(beacon) : getMemberships()[id];
-    if (membership?.role !== 'host' || !membership.token) throw new Error("Only the host can change this jama'ah.");
+  /** The device's host token, or null when the signed-in account is the host. */
+  const hostTokenFor = (id: string): string | null => {
+    const membership = resolveRole(beaconsRef.current.find((b) => b.id === id), id);
+    if (membership?.role !== 'host' || (!membership.token && !userIdRef.current)) throw new Error("Only the host can change this jama'ah.");
     return membership.token;
   };
 
@@ -225,8 +271,8 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
 
   /** Stops future days; today's beacon stays until cancelled or over. */
   const stopRegular = useCallback(async (regularId: string): Promise<void> => {
-    const token = getRegularHosts()[regularId];
-    if (!token) throw new Error("Only the host can stop this regular jama'ah.");
+    const token = getRegularHosts()[regularId] ?? null;
+    if (!token && !userIdRef.current) throw new Error("Only the host can stop this regular jama'ah.");
     const stopped = await beaconApi.stopRegular(regularId, token);
     if (!stopped) throw new Error("Couldn't stop it. Please try again.");
     setBeacons((prev) => prev.map((b) => (b.regular_id === regularId ? { ...b, repeat_days: null } : b)));
@@ -252,8 +298,13 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
   }, []);
 
   const roleFor = useCallback(
-    (beacon: Beacon): Membership | undefined => membershipFor(beacon, memberships, regularHosts),
-    [memberships, regularHosts],
+    (beacon: Beacon): Membership | undefined => {
+      const local = membershipFor(beacon, memberships, regularHosts);
+      if (local) return local;
+      const role = serverRoles[beacon.id];
+      return role ? { role, token: null, viaAccount: true } : undefined;
+    },
+    [memberships, regularHosts, serverRoles],
   );
 
   return {
@@ -269,5 +320,6 @@ export function useBeacons({ onRemoteRemoval, onRemoteChange }: Options = {}) {
     leaveBeacon,
     cancelBeacon,
     reportBeacon,
+    refreshServerRoles,
   };
 }

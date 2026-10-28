@@ -1,4 +1,4 @@
-import { Camera, Repeat, Users } from 'lucide-react';
+import { BadgeCheck, Camera, Repeat, Users } from 'lucide-react';
 import { useState } from 'react';
 import { SALAH_COLORS, SALAH_LABELS, startLabel } from '../lib/config';
 import { distanceMeters, formatDistance } from '../lib/geo';
@@ -88,7 +88,12 @@ export function ListView({ beacons, now, userLocation, roleFor, onSelect }: Prop
                   <span className="w-1.5 shrink-0 rounded-full" style={{ backgroundColor: SALAH_COLORS[b.salah_name] }} aria-hidden />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{SALAH_LABELS[b.salah_name]}</span>
+                      <span className="flex items-center gap-1 font-bold text-slate-900 dark:text-slate-100">
+                        {SALAH_LABELS[b.salah_name]}
+                        {b.host_verified && (
+                          <BadgeCheck className="size-4 text-emerald-700 dark:text-emerald-400" aria-label="Verified host" />
+                        )}
+                      </span>
                       <span className={`shrink-0 text-sm font-semibold ${live ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                         {startsIn(b, now)}
                       </span>

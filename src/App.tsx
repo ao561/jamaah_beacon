@@ -1,27 +1,31 @@
 import type L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccountSheet } from './components/AccountSheet';
 import { BeaconDetailDrawer, type BeaconAction } from './components/BeaconDetailDrawer';
 import { CreateBeaconModal, type BeaconFormValues, type PinSource } from './components/CreateBeaconModal';
 import { FloatingActionBar, type View } from './components/FloatingActionBar';
 import { ListView } from './components/ListView';
 import { MapView } from './components/MapView';
+import { MyJamaahsSheet } from './components/MyJamaahsSheet';
 import { NavigationBar, type SalahFilter } from './components/NavigationBar';
 import { InstallNudge } from './components/InstallNudge';
 import { Banner, BannerButton, StatusPill, Toast, type ToastMessage } from './components/Overlays';
 import { WelcomeSheet } from './components/WelcomeSheet';
+import { useAuth } from './hooks/useAuth';
 import { isPendingId, useBeacons } from './hooks/useBeacons';
-import { isFriday } from './lib/prayerTimes';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useNow } from './hooks/useNow';
 import { useTheme } from './hooks/useTheme';
+import { accountsAvailable } from './lib/account';
 import { beaconApi, isDemoMode } from './lib/beacons';
 import { FALLBACK_CENTER, SALAH_LABELS } from './lib/config';
 import { dismissInstallNudge, hasBeenWelcomed, installNudgeDismissed, installWorthOffering, markWelcomed } from './lib/install';
 import { getRegularHosts, membershipFor } from './lib/memberships';
+import { isFriday } from './lib/prayerTimes';
 import type { ReportReason } from './lib/reports';
 import { beaconIdFromUrl, shareBeacon, syncBeaconUrl } from './lib/share';
 import { formatClock, getStatus } from './lib/time';
-import type { Beacon, Coords, PrayerChanges } from './lib/types';
+import type { Beacon, Coords, Prayer, PrayerChanges } from './lib/types';
 
 /**
  * browse:       default map
@@ -74,6 +78,8 @@ export default function App() {
   };
 
   const geo = useGeolocation(locationAllowed);
+  const auth = useAuth();
+  const [panel, setPanel] = useState<'account' | 'mine' | null>(null);
   const theme = useTheme();
   const {
     beacons,
@@ -89,6 +95,7 @@ export default function App() {
     cancelBeacon,
     reportBeacon,
   } = useBeacons({
+    userId: auth.userId,
     // Only tell people who were looking at it or planning to go; hosts know what they did.
     onRemoteRemoval: (beacon, reason) => {
       const membership = membershipFor(beacon);
@@ -169,6 +176,7 @@ export default function App() {
 
   const focusBeacon = useCallback(
     (beacon: Beacon) => {
+      setPanel(null);
       setSelectedId(beacon.id);
       if (!map) return;
       // Pan so the pin sits in the top part of the screen, clear of the drawer.
@@ -246,6 +254,7 @@ export default function App() {
   };
 
   const openCreate = () => {
+    setPanel(null);
     setView('map');
     setSelectedId(null);
     setSubmitError(null);
@@ -394,6 +403,20 @@ export default function App() {
   };
 
   const closeDrawer = useCallback(() => setSelectedId(null), []);
+  const closePanel = useCallback(() => setPanel(null), []);
+
+  // Account panels replace whatever sheet is open (the host form keeps its state, just hidden).
+  const openAccount = () => {
+    setSelectedId(null);
+    if (mode !== 'browse') setMode('browse');
+    setPanel('account');
+  };
+
+  const openFromMine = (beacon: Prayer) => {
+    setPanel(null);
+    setView('map');
+    focusBeacon(beacon);
+  };
 
   const showLocationBanner = mode === 'browse' && view === 'map' && locationOff && !manualLocation && !locationBannerDismissed;
   const statusPill =
@@ -422,8 +445,17 @@ export default function App() {
         demo={isDemoMode}
         showJumuah={isFriday(new Date(now)) || live.some((b) => b.salah_name === 'Jumuah')}
         theme={theme.pref}
-        onCycleTheme={theme.cycle}
+        onToggleTheme={theme.toggle}
         onHelp={() => setWelcomeOpen(true)}
+        account={
+          accountsAvailable
+            ? {
+                signedIn: auth.userId !== null,
+                initial: (auth.profile?.display_name ?? auth.email ?? '').trim().charAt(0).toUpperCase() || null,
+                onOpen: openAccount,
+              }
+            : undefined
+        }
       />
 
       {showLocationBanner && (
@@ -465,7 +497,10 @@ export default function App() {
       <BeaconDetailDrawer
         beacon={mode === 'browse' ? selected : null}
         membership={selected ? roleFor(selected) : undefined}
-        hostsRegular={Boolean(selected?.regular_id && getRegularHosts()[selected.regular_id])}
+        hostsRegular={Boolean(
+          selected?.regular_id &&
+            (getRegularHosts()[selected.regular_id] || (auth.userId && roleFor(selected)?.role === 'host')),
+        )}
         busy={selected && busy?.id === selected.id ? busy.action : null}
         userLocation={userLocation}
         onJoin={handleJoin}
@@ -483,6 +518,8 @@ export default function App() {
         key={formKey}
         open={mode === 'create'}
         initial={editing}
+        hostingAs={auth.userId ? { name: auth.profile?.show_name ? (auth.profile.display_name ?? null) : null } : undefined}
+        onSignIn={accountsAvailable ? openAccount : undefined}
         coords={draft?.coords ?? userLocation ?? FALLBACK_CENTER}
         pinSource={draft?.source ?? 'map'}
         gpsAccuracy={geo.accuracy}
@@ -493,6 +530,21 @@ export default function App() {
       />
 
       {installNudgeOpen && mode === 'browse' && !selected && <InstallNudge onDismiss={closeInstallNudge} />}
+
+      <AccountSheet
+        open={panel === 'account'}
+        auth={auth}
+        onClose={closePanel}
+        onOpenMine={() => setPanel('mine')}
+        notify={notify}
+      />
+      <MyJamaahsSheet
+        open={panel === 'mine'}
+        onClose={closePanel}
+        onSelect={openFromMine}
+        onStopRegular={stopRegular}
+        notify={notify}
+      />
 
       <WelcomeSheet open={welcomeOpen} onDone={finishWelcome} />
 

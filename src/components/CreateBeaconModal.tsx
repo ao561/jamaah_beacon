@@ -38,6 +38,10 @@ interface Props {
   open: boolean;
   /** Set when editing an existing beacon; the form starts from its values. */
   initial?: Beacon;
+  /** Signed-in host's public name (null = hidden), or undefined when hosting anonymously. */
+  hostingAs?: { name: string | null } | undefined;
+  /** Shown when hosting anonymously; omitted in demo mode. */
+  onSignIn?: () => void;
   /** Where the beacon will be; used for prayer-time suggestions. */
   coords: Coords;
   pinSource: PinSource;
@@ -51,6 +55,8 @@ interface Props {
 export function CreateBeaconModal({
   open,
   initial,
+  hostingAs,
+  onSignIn,
   coords,
   pinSource,
   gpsAccuracy,
@@ -309,6 +315,24 @@ export function CreateBeaconModal({
         {shownError && (
           <p role="alert" className="flex items-start gap-2 rounded-xl bg-rose-50 dark:bg-rose-950/50 px-3 py-2.5 text-sm text-rose-800 dark:text-rose-200">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {shownError}
+          </p>
+        )}
+
+        {!editing && (hostingAs || onSignIn) && (
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+            {hostingAs ? (
+              <>
+                Hosting as <strong className="text-slate-700 dark:text-slate-200">{hostingAs.name ?? 'a verified host'}</strong>
+              </>
+            ) : (
+              <>
+                Hosting anonymously.{' '}
+                <button type="button" onClick={onSignIn} className="font-semibold text-emerald-700 dark:text-emerald-400">
+                  Sign in
+                </button>{' '}
+                to show your name and a verified badge.
+              </>
+            )}
           </p>
         )}
 

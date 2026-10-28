@@ -27,6 +27,10 @@ export interface Prayer {
   repeat_days?: number[] | null;
   /** Null when there's no photo; changes whenever the photo does. */
   photo_updated_at?: string | null;
+  /** The signed-in host's display name, if they chose to show it. */
+  host_name?: string | null;
+  /** Created by a signed-in host (confirmed email or Google), not anonymously. */
+  host_verified?: boolean;
 }
 
 /** Fields a host can change after posting. */

@@ -8,7 +8,8 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase =
   url && key
     ? createClient(url, key, {
-        // Zero-auth app: never create or persist a session.
-        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        // Accounts are optional; a session only exists once someone signs in. Implicit flow so a
+        // magic link works even when opened in a different browser from the one that asked for it.
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
       })
     : null;

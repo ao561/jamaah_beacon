@@ -1,4 +1,4 @@
-import { CircleHelp, Monitor, Moon, RadioTower, Sun } from 'lucide-react';
+import { CircleHelp, Moon, RadioTower, Sun, UserRound } from 'lucide-react';
 import { SALAH_COLORS, SALAH_LABELS } from '../lib/config';
 import type { ThemePref } from '../lib/theme';
 import { SALAH_NAMES, type SalahName } from '../lib/types';
@@ -13,15 +13,15 @@ interface Props {
   /** Jumu'ah chip only matters on Fridays or when there's a live Jumu'ah beacon. */
   showJumuah: boolean;
   theme: ThemePref;
-  onCycleTheme: () => void;
+  onToggleTheme: () => void;
   onHelp: () => void;
+  /** Omitted when accounts aren't available (demo mode). */
+  account?: { signedIn: boolean; initial: string | null; onOpen: () => void };
 }
 
-const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
-const THEME_NAMES = { system: 'System', light: 'Light', dark: 'Dark' };
 
-export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJumuah, theme, onCycleTheme, onHelp }: Props) {
-  const ThemeIcon = THEME_ICONS[theme];
+
+export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJumuah, theme, onToggleTheme, onHelp, account }: Props) {
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-[1000] px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
       <div className="pointer-events-auto mx-auto flex max-w-xl items-center gap-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 px-4 py-2.5 shadow-lg ring-1 ring-black/5 dark:ring-white/10 backdrop-blur">
@@ -50,13 +50,29 @@ export function NavigationBar({ activeCount, filter, onFilterChange, demo, showJ
         </button>
         <button
           type="button"
-          onClick={onCycleTheme}
-          aria-label={`Theme: ${THEME_NAMES[theme]}. Tap to change.`}
-          title={`Theme: ${THEME_NAMES[theme]}`}
+          onClick={onToggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           className="grid size-9 shrink-0 place-items-center rounded-xl text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
         >
-          <ThemeIcon className="size-5" />
+          {/* Shows the mode you'd switch to. */}
+          {theme === 'dark' ? <Sun className="size-5" /> : <Moon className="size-5" />}
         </button>
+        {account && (
+          <button
+            type="button"
+            onClick={account.onOpen}
+            aria-label={account.signedIn ? 'Your account' : 'Sign in'}
+            title={account.signedIn ? 'Your account' : 'Sign in (optional)'}
+            className={`grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
+              account.signedIn
+                ? 'bg-emerald-700 text-white'
+                : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+            }`}
+          >
+            {account.signedIn && account.initial ? account.initial : <UserRound className="size-5" />}
+          </button>
+        )}
       </div>
 
       <nav
