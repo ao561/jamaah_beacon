@@ -22,6 +22,7 @@ import { FALLBACK_CENTER, SALAH_LABELS } from './lib/config';
 import { dismissInstallNudge, hasBeenWelcomed, installNudgeDismissed, installWorthOffering, markWelcomed } from './lib/install';
 import { getRegularHosts, membershipFor } from './lib/memberships';
 import { isFriday } from './lib/prayerTimes';
+import { qiblaBearing } from './lib/qibla';
 import type { ReportReason } from './lib/reports';
 import { beaconIdFromUrl, shareBeacon, syncBeaconUrl } from './lib/share';
 import { formatClock, getStatus } from './lib/time';
@@ -41,6 +42,26 @@ interface Draft {
 }
 
 const FOCUS_ZOOM = 17;
+// BottomSheet becomes a left side panel from Tailwind's `sm` breakpoint.
+const WIDE_SCREEN_PX = 640;
+const QIBLA_LINE_MID_PX = 75;
+// Pins are drawn above their point; centre the pin's body (about 20px up), not its tip.
+const PIN_BODY_NUDGE: [number, number] = [0, -20];
+
+/** Centre of the map area not covered by the header or an open sheet, in screen pixels. */
+function visibleCentre(width: number, height: number) {
+  const header = document.querySelector('header')?.getBoundingClientRect();
+  const sheet = document.querySelector('[data-sheet]:not([hidden]) > div')?.getBoundingClientRect();
+  let [left, right, top, bottom] = [0, width, header?.bottom ?? 0, height];
+  if (sheet) {
+    if (width >= WIDE_SCREEN_PX) left = sheet.right;
+    else bottom = sheet.top;
+  }
+  return { x: (left + right) / 2, y: (top + Math.max(bottom, top + 80)) / 2 };
+}
+
+/** Runs after the next paint, so a sheet that's just been opened can be measured. */
+const afterPaint = (fn: () => void) => requestAnimationFrame(() => requestAnimationFrame(fn));
 const CONFIRM_PULSE_MS = 5000;
 
 // Supabase errors are plain objects with a message, not Error instances.
@@ -134,6 +155,8 @@ export default function App() {
   const [publishing, setPublishing] = useState(false);
   const [busy, setBusy] = useState<{ id: string; action: BeaconAction } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  /** The beacon whose qibla line is drawn on the map, if any. */
+  const [qiblaFor, setQiblaFor] = useState<string | null>(null);
   const [locationBannerDismissed, setLocationBannerDismissed] = useState(false);
 
   const userLocation = geo.coords ?? manualLocation;
@@ -174,18 +197,45 @@ export default function App() {
     return () => clearTimeout(id);
   }, [confirmId]);
 
+  /**
+   * The map centre that puts `coords` (shifted by `nudgePx` on screen) in the middle of the
+   * uncovered area: above the sheet on phones, beside it on wide screens.
+   */
+  const centreBeside = useCallback(
+    (coords: Coords, zoom: number, nudgePx: [number, number] = [0, 0]) => {
+      if (!map) return coords;
+      const size = map.getSize();
+      const target = visibleCentre(size.x, size.y);
+      const point = map.project(coords, zoom).add(nudgePx);
+      return map.unproject(point.subtract([target.x - size.x / 2, target.y - size.y / 2]), zoom);
+    },
+    [map],
+  );
+
   const focusBeacon = useCallback(
     (beacon: Beacon) => {
       setPanel(null);
       setSelectedId(beacon.id);
       if (!map) return;
-      // Pan so the pin sits in the top part of the screen, clear of the drawer.
       const zoom = Math.max(map.getZoom(), 16);
-      const point = map.project([beacon.latitude, beacon.longitude], zoom).add([0, map.getSize().y * 0.22]);
-      map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.5 });
+      // Wait for the drawer to render so its size is known.
+      afterPaint(() =>
+        map.flyTo(centreBeside([beacon.latitude, beacon.longitude], zoom, PIN_BODY_NUDGE), zoom, { duration: 0.5 }),
+      );
     },
-    [map],
+    [map, centreBeside],
   );
+
+  const toggleQibla = (beacon: Beacon) => {
+    const showing = qiblaFor === beacon.id;
+    setQiblaFor(showing ? null : beacon.id);
+    if (showing || !map) return;
+    // Centre the line rather than the pin, so its whole length is in view.
+    const bearing = (qiblaBearing([beacon.latitude, beacon.longitude]) * Math.PI) / 180;
+    const nudge: [number, number] = [Math.sin(bearing) * QIBLA_LINE_MID_PX, -Math.cos(bearing) * QIBLA_LINE_MID_PX];
+    const zoom = map.getZoom();
+    map.flyTo(centreBeside([beacon.latitude, beacon.longitude], zoom, nudge), zoom, { duration: 0.4 });
+  };
 
   useEffect(() => {
     const id = deepLinkId.current;
@@ -267,7 +317,10 @@ export default function App() {
       const centre = map?.getCenter();
       const coords: Coords = userLocation ?? (centre ? [centre.lat, centre.lng] : FALLBACK_CENTER);
       setDraft({ coords, source: geo.coords ? 'gps' : manualLocation ? 'manual' : 'map' });
-      map?.setView(coords, Math.max(map.getZoom(), 16));
+      if (map) {
+        const zoom = Math.max(map.getZoom(), 16);
+        afterPaint(() => map.setView(centreBeside(coords, zoom), zoom));
+      }
     }
     setMode('create');
   };
@@ -432,6 +485,7 @@ export default function App() {
         userLocation={userLocation}
         userAccuracy={geo.coords ? geo.accuracy : null}
         draftLocation={mode === 'create' || mode === 'adjust-pin' ? (draft?.coords ?? null) : null}
+        qiblaFrom={selected && qiblaFor === selected.id ? [selected.latitude, selected.longitude] : null}
         onReady={setMap}
         onSelect={focusBeacon}
         onMapClick={handleMapClick}
@@ -503,6 +557,8 @@ export default function App() {
         )}
         busy={selected && busy?.id === selected.id ? busy.action : null}
         userLocation={userLocation}
+        qiblaOnMap={selected !== null && qiblaFor === selected.id}
+        onToggleQibla={() => selected && toggleQibla(selected)}
         onJoin={handleJoin}
         onLeave={handleLeave}
         onCancel={handleCancel}

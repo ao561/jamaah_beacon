@@ -1,7 +1,9 @@
-import type L from 'leaflet';
-import { Circle, MapContainer, Marker, TileLayer, ZoomControl, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import { useState } from 'react';
+import { Circle, MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
 import { FALLBACK_CENTER, SALAH_LABELS } from '../lib/config';
 import { beaconIcon, draftIcon, userIcon } from '../lib/markerIcons';
+import { destinationPoint, qiblaBearing } from '../lib/qibla';
 import { getStatus } from '../lib/time';
 import type { Beacon, Coords } from '../lib/types';
 
@@ -13,10 +15,39 @@ interface Props {
   userLocation: Coords | null;
   userAccuracy: number | null;
   draftLocation: Coords | null;
+  /** Draw the qibla direction from this point. */
+  qiblaFrom: Coords | null;
   onReady: (map: L.Map | null) => void;
   onSelect: (beacon: Beacon) => void;
   onMapClick: (coords: Coords) => void;
   onDraftMove: (coords: Coords) => void;
+}
+
+const QIBLA_LINE_PX = 150;
+
+/** A short line towards Makkah. Only the start of the great circle is straight on the map, so keep it short. */
+function QiblaLine({ from }: { from: Coords }) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+
+  const bearing = qiblaBearing(from);
+  // Web Mercator: metres per pixel at this latitude and zoom.
+  const metresPerPx = (156543.03392 * Math.cos((from[0] * Math.PI) / 180)) / 2 ** zoom;
+  const to = destinationPoint(from, bearing, QIBLA_LINE_PX * metresPerPx);
+  const arrow = L.divIcon({
+    className: 'beacon-icon',
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    html: `<div class="qibla-arrow" style="transform: rotate(${bearing}deg)"></div>`,
+  });
+
+  return (
+    <>
+      <Polyline positions={[from, to]} interactive={false} pathOptions={{ color: '#047857', weight: 4, dashArray: '8 8', opacity: 0.9 }} />
+      <Marker position={to} icon={arrow} interactive={false} keyboard={false} />
+    </>
+  );
 }
 
 function ClickHandler({ onClick }: { onClick: (coords: Coords) => void }) {
@@ -32,6 +63,7 @@ export function MapView({
   userLocation,
   userAccuracy,
   draftLocation,
+  qiblaFrom,
   onReady,
   onSelect,
   onMapClick,
@@ -89,6 +121,8 @@ export function MapView({
           />
         );
       })}
+
+      {qiblaFrom && <QiblaLine from={qiblaFrom} />}
 
       {draftLocation && (
         <Marker

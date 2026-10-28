@@ -11,6 +11,7 @@ import type { Beacon, Coords } from '../lib/types';
 import { BottomSheet } from './BottomSheet';
 import { CountdownTimer } from './CountdownTimer';
 import { MetaBadges } from './MetaBadges';
+import { QiblaCard } from './QiblaCard';
 
 const STARTING_NOW_MS = 2 * 60_000;
 const CONFIRM_TIMEOUT_MS = 4000;
@@ -26,6 +27,8 @@ interface Props {
   hostsRegular: boolean;
   busy: BeaconAction | null;
   userLocation: Coords | null;
+  qiblaOnMap: boolean;
+  onToggleQibla: () => void;
   onJoin: (id: string) => void;
   onLeave: (id: string) => void;
   onCancel: (id: string) => void;
@@ -54,6 +57,8 @@ function DrawerBody({
   hostsRegular,
   busy,
   userLocation,
+  qiblaOnMap,
+  onToggleQibla,
   onJoin,
   onLeave,
   onCancel,
@@ -136,6 +141,8 @@ function DrawerBody({
       {beacon.photo_updated_at && <SpotPhoto beacon={beacon} />}
 
       <MetaBadges sistersFriendly={beacon.sisters_friendly} wuduNearby={beacon.wudu_nearby} />
+
+      <QiblaCard coords={coords} showingOnMap={qiblaOnMap} onToggleMap={onToggleQibla} />
 
       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
         <Users className="size-5 text-slate-400 dark:text-slate-500" aria-hidden />

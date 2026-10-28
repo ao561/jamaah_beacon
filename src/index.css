@@ -219,3 +219,16 @@ body {
   background: var(--color-slate-100);
   color: var(--color-slate-900);
 }
+
+/* Arrowhead at the end of the qibla line; rotated inline to the bearing (0deg = north). */
+.qibla-arrow {
+  width: 22px;
+  height: 22px;
+  background: #047857;
+  clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%);
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.4));
+}
+
+.dark .qibla-arrow {
+  background: #34d399;
+}
