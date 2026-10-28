@@ -10,7 +10,8 @@ export const LOOKAHEAD_MINUTES = 120;
 /** Markers disappear locally this long after iqamah. */
 export const HIDE_AFTER_MINUTES = 10;
 
-export const REFRESH_INTERVAL_MS = 30_000;
+/** Fallback poll; realtime normally delivers changes instantly. */
+export const REFRESH_INTERVAL_MS = 60_000;
 
 export const IQAMAH_OFFSETS = [5, 10, 15, 20] as const;
 

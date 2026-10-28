@@ -1,16 +1,18 @@
 import type L from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BeaconDetailDrawer } from './components/BeaconDetailDrawer';
+import { BeaconDetailDrawer, type BeaconAction } from './components/BeaconDetailDrawer';
 import { CreateBeaconModal, type BeaconFormValues, type PinSource } from './components/CreateBeaconModal';
 import { FloatingActionBar } from './components/FloatingActionBar';
 import { MapView } from './components/MapView';
 import { NavigationBar, type SalahFilter } from './components/NavigationBar';
 import { Banner, BannerButton, StatusPill, Toast, type ToastMessage } from './components/Overlays';
-import { useBeacons } from './hooks/useBeacons';
+import { isPendingId, useBeacons } from './hooks/useBeacons';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useNow } from './hooks/useNow';
 import { isDemoMode } from './lib/beacons';
 import { FALLBACK_CENTER } from './lib/config';
+import { getMemberships } from './lib/memberships';
+import { beaconIdFromUrl, shareBeacon, syncBeaconUrl } from './lib/share';
 import { getStatus } from './lib/time';
 import type { Beacon, Coords } from './lib/types';
 
@@ -30,26 +32,42 @@ interface Draft {
 const FOCUS_ZOOM = 17;
 const CONFIRM_PULSE_MS = 5000;
 
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+// Supabase errors are plain objects with a message, not Error instances.
+const errorMessage = (err: unknown) =>
+  typeof err === 'object' && err !== null && 'message' in err && typeof err.message === 'string' && err.message
+    ? err.message
+    : 'Something went wrong. Please try again.';
 
 export default function App() {
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const notify = useCallback((tone: ToastMessage['tone'], text: string) => setToast({ id: Date.now(), tone, text }), []);
+  const dismissToast = useCallback(() => setToast(null), []);
+
   const geo = useGeolocation();
-  const { beacons, loadState, joined, refresh, createBeacon, joinBeacon } = useBeacons();
+  const { beacons, loadState, memberships, refresh, createBeacon, joinBeacon, leaveBeacon, cancelBeacon } = useBeacons({
+    onRemoteDelete: (beacon) => {
+      const membership = getMemberships()[beacon.id];
+      // Only tell people who were looking at it or planning to go; hosts know they cancelled.
+      if (membership?.role !== 'host' && (membership || beacon.id === selectedId)) {
+        notify('error', `The host cancelled ${beacon.salah_name} at ${beacon.location_name}.`);
+      }
+    },
+  });
   // Coarse tick for marker status / auto-hide; the drawer runs its own 1s countdown.
   const now = useNow(5000);
 
   const [map, setMap] = useState<L.Map | null>(null);
   const [mode, setMode] = useState<Mode>('browse');
   const [filter, setFilter] = useState<SalahFilter>('All');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [manualLocation, setManualLocation] = useState<Coords | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [formKey, setFormKey] = useState(0);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
-  const [joiningId, setJoiningId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<{ id: string; action: BeaconAction } | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   const [locationBannerDismissed, setLocationBannerDismissed] = useState(false);
 
   const userLocation = geo.coords ?? manualLocation;
@@ -60,11 +78,11 @@ export default function App() {
   // Looked up in `live` (not `visible`) so changing the filter doesn't close an open drawer.
   const selected = live.find((b) => b.id === selectedId) ?? null;
 
-  const notify = useCallback((tone: ToastMessage['tone'], text: string) => setToast({ id: Date.now(), tone, text }), []);
-  const dismissToast = useCallback(() => setToast(null), []);
+  // A shared link (?b=<id>) opens that beacon once the first fetch lands.
+  const deepLinkId = useRef(beaconIdFromUrl());
+  // Centre on the first GPS fix only; later fixes just move the blue dot. A deep link wins.
+  const centredOnUser = useRef(deepLinkId.current !== null);
 
-  // Centre on the first GPS fix only; later fixes just move the blue dot.
-  const centredOnUser = useRef(false);
   useEffect(() => {
     if (map && geo.coords && !centredOnUser.current) {
       centredOnUser.current = true;
@@ -83,14 +101,38 @@ export default function App() {
     return () => clearTimeout(id);
   }, [confirmId]);
 
-  const focusBeacon = (beacon: Beacon) => {
-    setSelectedId(beacon.id);
-    if (!map) return;
-    // Pan so the pin sits in the top part of the screen, clear of the drawer.
-    const zoom = Math.max(map.getZoom(), 16);
-    const point = map.project([beacon.latitude, beacon.longitude], zoom).add([0, map.getSize().y * 0.22]);
-    map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.5 });
-  };
+  const focusBeacon = useCallback(
+    (beacon: Beacon) => {
+      setSelectedId(beacon.id);
+      if (!map) return;
+      // Pan so the pin sits in the top part of the screen, clear of the drawer.
+      const zoom = Math.max(map.getZoom(), 16);
+      const point = map.project([beacon.latitude, beacon.longitude], zoom).add([0, map.getSize().y * 0.22]);
+      map.flyTo(map.unproject(point, zoom), zoom, { duration: 0.5 });
+    },
+    [map],
+  );
+
+  useEffect(() => {
+    const id = deepLinkId.current;
+    if (!id || !map || loadState !== 'ready') return;
+    deepLinkId.current = null;
+    const target = live.find((b) => b.id === id);
+    if (target) {
+      focusBeacon(target);
+    } else {
+      notify('error', "That jama'ah has ended or was cancelled.");
+      syncBeaconUrl(null);
+      if (geo.coords) map.setView(geo.coords, 16);
+      else centredOnUser.current = false;
+    }
+  }, [map, loadState, live, focusBeacon, notify, geo.coords]);
+
+  // Keep the address bar shareable; skipped until any deep link has been handled.
+  useEffect(() => {
+    if (deepLinkId.current) return;
+    syncBeaconUrl(selectedId && !isPendingId(selectedId) ? selectedId : null);
+  }, [selectedId]);
 
   const handleMapClick = (coords: Coords) => {
     if (mode === 'set-location') {
@@ -153,6 +195,8 @@ export default function App() {
       setDraft(null);
       setFormKey((k) => k + 1);
       setConfirmId(row.id);
+      // Open it so the host can invite people straight away.
+      focusBeacon(row);
       notify('success', `Your ${row.salah_name} beacon is live.`);
     } catch (err) {
       console.error('Failed to create beacon', err);
@@ -164,15 +208,29 @@ export default function App() {
     }
   };
 
-  const handleJoin = async (id: string) => {
-    setJoiningId(id);
+  const runAction = async (id: string, action: BeaconAction, run: () => Promise<void>, success?: string) => {
+    setBusy({ id, action });
     try {
-      await joinBeacon(id);
+      await run();
+      if (success) notify('success', success);
     } catch (err) {
-      console.error('Failed to join beacon', err);
+      console.error(`Failed to ${action} beacon`, err);
       notify('error', errorMessage(err));
     } finally {
-      setJoiningId(null);
+      setBusy(null);
+    }
+  };
+
+  const handleJoin = (id: string) => runAction(id, 'join', () => joinBeacon(id));
+  const handleLeave = (id: string) => runAction(id, 'leave', () => leaveBeacon(id), "You've been removed. Maybe next time.");
+  const handleCancel = (id: string) => runAction(id, 'cancel', () => cancelBeacon(id), "Jama'ah cancelled.");
+
+  const handleShare = async (beacon: Beacon) => {
+    try {
+      if ((await shareBeacon(beacon)) === 'copied') notify('success', 'Link copied. Paste it into your group chat.');
+    } catch (err) {
+      console.error('Failed to share beacon', err);
+      notify('error', "Couldn't share. Copy the link from the address bar instead.");
     }
   };
 
@@ -227,10 +285,13 @@ export default function App() {
 
       <BeaconDetailDrawer
         beacon={mode === 'browse' ? selected : null}
-        joined={selected ? joined.has(selected.id) : false}
-        joining={selected !== null && joiningId === selected.id}
+        membership={selected ? memberships[selected.id] : undefined}
+        busy={selected && busy?.id === selected.id ? busy.action : null}
         userLocation={userLocation}
         onJoin={handleJoin}
+        onLeave={handleLeave}
+        onCancel={handleCancel}
+        onShare={handleShare}
         onClose={closeDrawer}
       />
 
