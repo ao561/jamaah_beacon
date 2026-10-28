@@ -1,0 +1,13 @@
+{
+  "name": "Jama'ah Beacon",
+  "short_name": "Beacon",
+  "description": "Find or host a congregational prayer within walking distance.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#047857",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
