@@ -2,7 +2,7 @@
 
 Find or host a congregational prayer within walking distance, right now. Drop a time-limited beacon at your exact spot, or tap a nearby one to see the countdown, directions and amenities, and count yourself in.
 
-No accounts and no logins. The only thing the device remembers is which beacons it has already joined (`localStorage`).
+No account needed. Signing in is optional, and without it the device only remembers which beacons it has hosted or joined (`localStorage`).
 
 ## Quick start
 
@@ -16,7 +16,7 @@ With no Supabase credentials the app runs in **demo mode**: three mock beacons a
 ### Connect Supabase
 
 1. Create a Supabase project.
-2. In the SQL editor, run [`0001_create_prayers.sql`](supabase/migrations/0001_create_prayers.sql) then [`0002_tokens_and_realtime.sql`](supabase/migrations/0002_tokens_and_realtime.sql), then [`0003_jumuah_rate_limits_reports.sql`](supabase/migrations/0003_jumuah_rate_limits_reports.sql), then [`0004_scheduled_cleanup.sql`](supabase/migrations/0004_scheduled_cleanup.sql), then [`0005_edit_and_regular_prayers.sql`](supabase/migrations/0005_edit_and_regular_prayers.sql), then [`0006_photos_and_stats.sql`](supabase/migrations/0006_photos_and_stats.sql), then [`0007_accounts.sql`](supabase/migrations/0007_accounts.sql), then [`0008_account_grants.sql`](supabase/migrations/0008_account_grants.sql). For demo data, also run [`supabase/seed.sql`](supabase/seed.sql). Seed times are relative to `now()`, so re-run it whenever the rows age out.
+2. Apply the database schema in [`supabase/migrations/`](supabase/migrations/), in filename order.
 3. `cp .env.example .env.local` and fill in the project URL and anon/publishable key (Project settings → API).
 4. Restart `npm run dev`.
 
@@ -59,7 +59,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Ephemerality.** Clients fetch beacons with `iqamah_time` between 45 minutes ago and 2 hours ahead. A beacon shows as *Upcoming* (green countdown) before its start time and *Praying now* (amber) afterwards. Its marker hides 10 minutes after the start, or 40 minutes for Jumu'ah, to cover the khutbah.
 
-**Cleanup.** A `pg_cron` job (`prune-expired-beacons`, migrations 0004 and 0005) runs hourly. It deletes beacons more than a day past their start time, beacons hidden by reports more than a day ago, stopped or expired regular templates once they have no recent beacons, and old skip and rate-limit records. A host cancelling deletes the row immediately. Deleting a beacon cascades to its tokens and reports.
+**Cleanup.** A `pg_cron` job (`prune-expired-beacons`) runs hourly. It deletes beacons more than a day past their start time, beacons hidden by reports more than a day ago, stopped or expired regular templates once they have no recent beacons, and old skip and rate-limit records. A host cancelling deletes the row immediately. Deleting a beacon cascades to its tokens and reports.
 
 **Live updates.** Clients subscribe to Supabase Realtime changes on `prayers`, so new beacons, +1s and cancellations show up on every phone within about a second. Each time the connection opens or reconnects, the app refetches to catch anything it missed. It also polls every 60 seconds as a backup.
 
@@ -69,12 +69,12 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Reports.** Anyone except the host can report a beacon: not a real jama'ah, wrong location, or inappropriate. The reporter stops seeing it immediately. Once 3 different devices report it, `hidden_at` is set and it disappears for everyone via realtime. Devices are identified by a random `device_id` in `localStorage`.
 
-**Database guardrails** (the migrations):
+**Database guardrails:**
 - The anon role can only `select` from `prayers`. Every write goes through `security definer` functions: `create_prayer`, `create_regular_prayer`, `update_prayer`, `join_prayer`, `leave_prayer`, `cancel_prayer`, `stop_regular_prayer` and `report_prayer`.
 - Tokens are stored only as SHA-256 hashes, in `prayer_tokens`. RLS is on and there are no policies, so nobody can read it through the API.
 - A new beacon's iqamah must fall within the next ~2 hours. Joins are refused 15 minutes after iqamah. The count never drops below 1, since the host counts.
 - Reads only return beacons from the last hour onwards, so old location history can't be scraped.
-- Per-IP rate limits inside Postgres (`private.hit_rate_limit`). These cover creating (10 per 10 min and 30 per day), joining (120 per 10 min) and reporting (20 per hour). The IP comes from the `cf-connecting-ip` / `x-forwarded-for` headers that Supabase's edge sets. The limits are deliberately generous, because a whole office or campus Wi-Fi network often shares one IP. Tune them in migration 0003.
+- Per-IP rate limits inside Postgres (`private.hit_rate_limit`). These cover creating (10 per 10 min and 30 per day), joining (120 per 10 min) and reporting (20 per hour). The IP comes from the `cf-connecting-ip` / `x-forwarded-for` headers that Supabase's edge sets. The limits are deliberately generous, because a whole office or campus Wi-Fi network often shares one IP.
 - Text length and lat/lng range checks.
 
 **Host flow.** The pin defaults to your GPS fix. If accuracy is worse than ±50 m, or location is unavailable, the form prompts you to drag the pin. Submitting closes the form and shows a translucent pending pin while the write is in flight. If the write fails, the form reopens with your input intact. Once the beacon is live, its drawer opens with **Invite people** (the share sheet) and **Cancel this jama'ah**, which takes two taps.
@@ -87,7 +87,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 
 **Photos.** Hosts can attach one photo per beacon, and replace or remove it when editing. The phone shrinks it to at most 1280 px and 350 KB and re-encodes it as JPEG, which also strips EXIF metadata such as the GPS position. Photos are stored in Postgres (`prayer_photos`, set via `set_prayer_photo`, read via `get_prayer_photo`) rather than Supabase Storage. So a photo is deleted by the same cascade as its beacon, and there are no orphaned files to clean up. The server checks the file type from its bytes and caps size at 400 KB. A regular jama'ah's photo is copied onto each day's beacon. At larger scale, consider moving photos to Storage with a cleanup function.
 
-**Usage stats.** Anonymous daily counters in `private.daily_stats`. There are no identifiers: no IPs, devices or cookies. Database triggers count beacons created, regular days generated, joins, undos, edits, photos, cancels, reports and hidden beacons. The app reports app opens, beacon views, list opens and shares through `track_event`, which only accepts those names and is rate limited. To read them, run `select * from private.daily_summary;` in the SQL editor.
+**Usage stats.** Anonymous daily counters in `private.daily_stats`. There are no identifiers: no IPs, devices or cookies. Database triggers count beacons created, regular days generated, joins, undos, edits, photos, cancels, reports and hidden beacons. The app reports app opens, beacon views, list opens and shares through `track_event`, which only accepts those names and is rate limited.
 
 **Welcome and install.** First-time visitors get a short skippable intro: what it is, how to join, how to host. On phones, and on browsers that can install apps, it adds an "Add to home screen" step. The location permission prompt waits until the intro is done. Visitors arriving on a shared `?b=` link skip the intro until their next visit. The header's **?** button reopens it. Installing uses Chrome's `beforeinstallprompt` where it's available. Otherwise it shows instructions for iPhone (Share → Add to Home Screen), Android (browser menu), or in-app browsers like WhatsApp (open in Safari/Chrome first). After someone first joins or hosts, a one-time card offers the same help. The PNG app icons in `public/` (192, 512, maskable 512, and a 180 Apple touch icon) are generated from `icon.svg`.
 
@@ -97,7 +97,7 @@ Browsers only expose geolocation on `https://` or `localhost`. `npm run dev -- -
 - beacons show "Hosted by <name>", where the name is optional, plus a **Verified** badge. "Verified" means a confirmed email or Google account, not identity vetting
 - **My jama'ahs** lists what you're hosting now, your regular spots (stop and restart), and what you joined recently
 
-Device tokens still work alongside accounts. Only the display name is ever public. Emails stay in `auth.users`, and the host and attendee links live in tables the API can't read. **Delete account** removes the user, their profile and all links. Their +1s remain as anonymous counts, and their regular spots stop. See `delete_my_account()` in migration 0007.
+Device tokens still work alongside accounts. Only the display name is ever public. Emails stay in `auth.users`, and the host and attendee links live in tables the API can't read. **Delete account** removes the user, their profile and all links. Their +1s remain as anonymous counts, and their regular spots stop.
 
 **Qibla.** Each beacon's panel shows the qibla direction from the beacon's pin: the great-circle bearing to the Kaaba (`src/lib/qibla.ts`, checked against published values for several cities), its compass point, and the distance to Makkah. **Show on map** draws a short dashed line with an arrowhead. Only the start of a great circle is straight on a flat map, so the line stays about 150 px long at any zoom. On phones, **Use compass** turns the dial into a live compass from the magnetometer (`src/hooks/useCompass.ts`). On iOS it uses `webkitCompassHeading`, after the motion-permission prompt; on Android, `deviceorientationabsolute`. It says "Turn left/right N°", goes green with a short vibration when you're within 5°, and shows a figure-8 calibration hint when the reported accuracy is poor. Laptops have no compass, so they get the bearing and the map line.
 
