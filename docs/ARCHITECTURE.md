@@ -64,16 +64,19 @@ Cancelling deletes the row immediately. Deleting a beacon cascades to its tokens
 
 **Qibla.** The great-circle bearing to the Kaaba is calculated from the beacon's pin. The map line stays about 150 px long at any zoom, because only the start of a great circle is straight on a flat map. The live compass reads the phone's heading: `webkitCompassHeading` on iOS (after the motion-permission prompt) and `deviceorientationabsolute` on Android. It's smoothed along the shortest arc.
 
+**Link previews.** Chat apps read a shared link's Open Graph tags without running JavaScript. [`middleware.ts`](../middleware.ts), a Vercel Routing Middleware, catches `/?b=<id>`, looks the beacon up with the anon key and serves `index.html` with that beacon's title and description filled in, e.g. "Asr jama'ah at Library, 2nd floor" / "Iqamah 16:15 · 4 going · Wudu nearby". The time is shown in the beacon's own time zone, found from its coordinates. Ended, cancelled or hidden beacons get an "ended" preview; any error falls through to the normal page.
+
+**Map tiles.** [`src/lib/tiles.ts`](../src/lib/tiles.ts) uses MapTiler (`streets-v2`, and `streets-v2-dark` in dark mode) when `VITE_MAPTILER_KEY` is set, and OpenStreetMap's public tiles otherwise, recoloured with a CSS filter in dark mode. The key is public by nature, so restrict it to your domains in the MapTiler dashboard.
+
 **Usage stats.** Anonymous daily counters in `private.daily_stats`, filled by database triggers and by a `track_event` function that only accepts a fixed set of event names.
 
 **Layout.** Panels are bottom sheets on phones and a left side panel from 640 px wide. When a beacon or the qibla line is focused, the map is centred in whatever area the header and open panel leave uncovered (measured via `data-sheet`).
 
-**Dark mode.** An inline script in `index.html` applies a saved dark theme before first paint. OpenStreetMap has no dark tiles, so the tile layer is recoloured with a CSS filter.
+**Dark mode.** An inline script in `index.html` applies a saved dark theme before first paint.
 
 ## Scaling notes
 
-- **Map tiles.** Tiles come from OpenStreetMap's public servers, which have a [usage policy](https://operations.osmfoundation.org/policies/tiles/). Switch to a keyed provider (MapTiler, Stadia, Mapbox) as traffic grows.
+- **Map tiles.** MapTiler's free plan has a monthly request quota. Tiles are 512 px, a quarter of the requests of 256 px ones; watch usage in the MapTiler dashboard and upgrade if it runs close.
 - **Global fetch.** Every active beacon worldwide is fetched. Add a bounding-box filter and a composite index once there's traffic in more than one city.
 - **Photos.** At larger scale, move photos to Supabase Storage with a cleanup function.
-- **Link previews.** Every shared link shows the same preview. A per-beacon preview would need an edge function that renders the meta tags.
 - **Offline.** There's no service worker, since the app needs live data anyway.

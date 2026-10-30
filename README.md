@@ -14,7 +14,7 @@ Drop a time-limited beacon where you're about to pray, and Muslims nearby can se
 - **Regular jama'ahs.** Running a weekly prayer at your office or campus? Set it to repeat, and a beacon appears automatically on the chosen days.
 - **Qibla direction.** Every beacon shows the qibla from that spot, with a line on the map. On phones it becomes a live compass that tells you when you're facing the qibla.
 - **Map or list.** Browse nearby beacons on the map, or as a list sorted by soonest or nearest.
-- **Share links.** Send a beacon to friends on WhatsApp or anywhere else. The link opens straight to it.
+- **Share links.** Send a beacon to friends on WhatsApp or anywhere else. The preview shows the prayer, place, time and how many are going, and the link opens straight to it.
 - **Hosts stay in control.** Edit details, push the time back if you're running late, add a photo of the entrance, or cancel.
 - **Community moderation.** Anyone can report a fake or inappropriate beacon. After a few reports it disappears for everyone.
 - **Optional accounts.** Sign in with Google to manage your beacons from any device and show a "Verified" badge.
@@ -51,7 +51,7 @@ To connect a real back end:
 
 1. Create a [Supabase](https://supabase.com) project.
 2. Apply the database schema in [`supabase/migrations/`](supabase/migrations/), in filename order.
-3. Copy `.env.example` to `.env.local` and fill in the project URL and anon key (**Project settings → API**).
+3. Copy `.env.example` to `.env.local` and fill in the project URL and anon key (**Project settings → API**). For production, also add a [MapTiler](https://cloud.maptiler.com) API key; without one the map uses OpenStreetMap's public tiles, which are only meant for light use.
 4. Restart `npm run dev`.
 
 **Sign-in (optional):**

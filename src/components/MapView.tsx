@@ -4,6 +4,7 @@ import { Circle, MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap,
 import { FALLBACK_CENTER, SALAH_LABELS } from '../lib/config';
 import { beaconIcon, draftIcon, userIcon } from '../lib/markerIcons';
 import { destinationPoint, qiblaBearing } from '../lib/qibla';
+import { tileSource } from '../lib/tiles';
 import { getStatus } from '../lib/time';
 import type { Beacon, Coords } from '../lib/types';
 
@@ -21,6 +22,7 @@ interface Props {
   onSelect: (beacon: Beacon) => void;
   onMapClick: (coords: Coords) => void;
   onDraftMove: (coords: Coords) => void;
+  dark: boolean;
 }
 
 const QIBLA_LINE_PX = 150;
@@ -68,7 +70,9 @@ export function MapView({
   onSelect,
   onMapClick,
   onDraftMove,
+  dark,
 }: Props) {
+  const tiles = tileSource(dark);
   return (
     <MapContainer
       ref={onReady}
@@ -78,9 +82,13 @@ export function MapView({
       className="h-full w-full"
     >
       <TileLayer
-        // OSM's public tiles are fine for an MVP; switch to a keyed provider (MapTiler, Stadia) before real traffic.
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // Keyed on the URL: react-leaflet doesn't swap a tile layer's source in place.
+        key={tiles.url}
+        url={tiles.url}
+        attribution={tiles.attribution}
+        tileSize={tiles.tileSize}
+        zoomOffset={tiles.zoomOffset}
+        className={tiles.recolourInDark ? 'recolour-in-dark' : undefined}
         maxZoom={19}
       />
       <ZoomControl position="bottomleft" />

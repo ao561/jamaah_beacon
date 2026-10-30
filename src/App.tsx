@@ -490,6 +490,7 @@ export default function App() {
         onSelect={focusBeacon}
         onMapClick={handleMapClick}
         onDraftMove={(coords) => setDraft({ coords, source: 'adjusted' })}
+        dark={theme.pref === 'dark'}
       />
 
       <NavigationBar

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@photostructure/tz-lookup": "^11.7.0",
     "@supabase/supabase-js": "^2.118.0",
+    "@vercel/functions": "^3.10.5",
     "adhan": "^4.4.6",
     "date-fns": "^4.4.0",
     "leaflet": "^1.9.4",

@@ -55,12 +55,12 @@ body {
   background: #e5e7eb;
 }
 
-/* OSM has no dark tiles, so recolour them. Only the tile layer: markers keep their real colours. */
 .dark .leaflet-container {
   background: #1e293b;
 }
 
-.dark .leaflet-tile-pane {
+/* OSM has no dark tiles, so recolour them (lib/tiles.ts). Only the tile layer: markers keep their real colours. */
+.dark .recolour-in-dark {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.5);
 }
 
