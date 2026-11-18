@@ -1,0 +1,8 @@
+{
+  // Files that run in Node rather than the browser: Vercel's middleware, its test, and the Vite config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["middleware.ts", "middleware.test.ts", "vite.config.ts"]
+}

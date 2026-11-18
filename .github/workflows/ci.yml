@@ -1,0 +1,22 @@
+# Type checks, tests and builds every push and pull request, so a broken change shows a red
+# cross on GitHub. Vercel runs the same `npm run build` before deploying, so it won't deploy one.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Matches the Node version Vercel runs the middleware on.
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # No Supabase or MapTiler env here, so this builds the demo version.
+      - run: npm run build

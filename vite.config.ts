@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    // Public source maps, so crash reports show real file names and lines. The code is open source anyway.
+    sourcemap: true,
     rollupOptions: {
       output: {
         // Third-party code changes rarely, so keep it cacheable across deploys.

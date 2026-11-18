@@ -54,6 +54,10 @@ To connect a real back end:
 3. Copy `.env.example` to `.env.local` and fill in the project URL and anon key (**Project settings → API**). For production, also add a [MapTiler](https://cloud.maptiler.com) API key; without one the map uses OpenStreetMap's public tiles, which are only meant for light use.
 4. Restart `npm run dev`.
 
+**Crash reports (optional):** set `VITE_SENTRY_DSN` to a [Sentry](https://sentry.io) project's DSN. Without it nothing is reported.
+
+**Tests:** `npm test` runs the test suite. `npm run build` type checks and runs the tests before building, so a deploy fails rather than shipping a broken build.
+
 **Sign-in (optional):**
 
 1. In Supabase, go to **Authentication → URL Configuration**. Set the Site URL to your deployed URL, and add `<your-url>/**` and `http://localhost:5173/**` as redirect URLs.

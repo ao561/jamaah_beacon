@@ -12,8 +12,6 @@ import type { Prayer, SalahName } from './src/lib/types';
 
 export const config = { matcher: '/' };
 
-declare const process: { env: Record<string, string | undefined> };
-
 // Mirrors SALAH_LABELS and startLabel in src/lib/config.ts.
 const SALAH_LABELS: Record<SalahName, string> = {
   Fajr: 'Fajr',
@@ -46,7 +44,7 @@ export default async function middleware(request: Request): Promise<Response> {
     const [beacon, page] = await Promise.all([fetchBeacon(id), fetchPage(request, url.origin)]);
     if (!page) return next();
     const live = beacon && Date.now() < Date.parse(beacon.iqamah_time) + hideAfterMs(beacon.salah_name);
-    const html = withPreview(page, live ? describe(beacon) : ENDED, url.toString());
+    const html = withPreview(page, live ? previewFor(beacon) : ENDED, url.toString());
     return new Response(html, {
       headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=0, must-revalidate' },
     });
@@ -55,18 +53,22 @@ export default async function middleware(request: Request): Promise<Response> {
   }
 }
 
+/**
+ * The beacon, or null if it's gone (ended, cancelled or hidden). Throws if Supabase can't be
+ * asked, so the caller serves the plain page rather than wrongly saying the jama'ah has ended.
+ */
 async function fetchBeacon(id: string): Promise<PreviewBeacon | null> {
   // Same normalisation as src/lib/supabase.ts.
   const base = process.env.VITE_SUPABASE_URL?.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
   const key = process.env.VITE_SUPABASE_ANON_KEY?.trim();
-  if (!base || !key) return null;
+  if (!base || !key) throw new Error('Supabase is not configured');
 
   const query = `${base}/rest/v1/prayers?id=eq.${id}&hidden_at=is.null&select=${COLUMNS}`;
   const res = await fetch(query, {
     headers: { apikey: key, authorization: `Bearer ${key}` },
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`Supabase responded ${res.status}`);
   const rows = (await res.json()) as PreviewBeacon[];
   return rows[0] ?? null;
 }
@@ -97,7 +99,7 @@ const ENDED: Preview = {
 };
 
 /** "Asr jama'ah at Library, 2nd floor" / "Iqamah 16:15 · 4 going · Wudu nearby. Tap to …" */
-export function describe(beacon: PreviewBeacon, now = new Date()): Preview {
+export function previewFor(beacon: PreviewBeacon, now = new Date()): Preview {
   // Beacons don't store a time zone, so show the time as it is where the beacon is.
   let timeZone = 'UTC';
   try {

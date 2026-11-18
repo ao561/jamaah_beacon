@@ -17,6 +17,7 @@ Jama'ah Beacon is a single-page React app with no server of its own. Vite builds
 | Status rules and countdown formatting | [`src/lib/time.ts`](../src/lib/time.ts) |
 | Tunable windows, colours, fallback centre | [`src/lib/config.ts`](../src/lib/config.ts) |
 | Screen state (browse / create / adjust pin / set location), map centring | [`src/App.tsx`](../src/App.tsx) |
+| Crash reporting | [`src/lib/monitoring.ts`](../src/lib/monitoring.ts) |
 | Database schema, functions and scheduled jobs | [`supabase/migrations/`](../supabase/migrations/) |
 
 ## Data and security
@@ -73,6 +74,16 @@ Cancelling deletes the row immediately. Deleting a beacon cascades to its tokens
 **Layout.** Panels are bottom sheets on phones and a left side panel from 640 px wide. When a beacon or the qibla line is focused, the map is centred in whatever area the header and open panel leave uncovered (measured via `data-sheet`).
 
 **Dark mode.** An inline script in `index.html` applies a saved dark theme before first paint.
+
+## Testing and monitoring
+
+**Tests.** [Vitest](https://vitest.dev) tests sit next to the code they cover (`*.test.ts`): beacon status rules, countdowns and time parsing, prayer-time suggestions and warnings, qibla bearings against published values, and the link-preview middleware. `npm run build` runs the type check and tests before building, and Vercel deploys with `npm run build`, so a failing test stops a deploy and the live site stays on the last good version. The [CI workflow](../.github/workflows/ci.yml) runs the same build on every push and pull request.
+
+**Middleware must stay self-contained.** Vercel runs [`middleware.ts`](../middleware.ts) on its own in Node, not bundled with the app, so it can only import npm packages (and types). A relative import from `src/` once took the whole site down. `middleware.test.ts` transpiles the file and loads it in a separate Node process the same way, so that mistake fails the build instead.
+
+**Crash reports.** With `VITE_SENTRY_DSN` set, [`src/lib/monitoring.ts`](../src/lib/monitoring.ts) sends uncaught errors and React render crashes to Sentry. Errors only: no session replay or performance tracing, and no user info, cookies, headers, request bodies, query parameters or local variables. URL fragments are stripped, because Google sign-in returns session tokens there. Builds publish source maps (the code is open source anyway), so reports show real file names and lines. If rendering crashes, a "Something went wrong" screen with a Reload button replaces the blank page.
+
+**Uptime.** An external monitor fetches the home page and an unknown beacon link every few minutes. The second only says "has ended or was cancelled" when the middleware and Supabase both work, so it checks all three.
 
 ## Scaling notes
 
