@@ -1,3 +1,6 @@
+/// <reference types="node" />
+// (Vercel type-checks this file with the root tsconfig, which only has browser types.)
+
 // Rich link previews for shared beacons (/?b=<id>). WhatsApp, iMessage and friends read a page's
 // Open Graph tags without running its JavaScript, so this Vercel Routing Middleware fills them in
 // from the beacon before index.html is served. People get the same page as always; anything
