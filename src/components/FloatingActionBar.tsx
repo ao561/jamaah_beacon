@@ -13,11 +13,11 @@ interface Props {
 
 export function FloatingActionBar({ view, onToggleView, hasLocation, publishing, onLocate, onHost }: Props) {
   return (
-    <div className="pointer-events-none fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[1000] flex items-center gap-3">
+    <div className="pointer-events-none fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[1000] flex items-center gap-2 min-[400px]:gap-3">
       <button
         type="button"
         onClick={onToggleView}
-        className="pointer-events-auto flex h-12 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-slate-50 active:scale-95 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/10 dark:hover:bg-slate-800"
+        className="pointer-events-auto flex h-12 items-center gap-1.5 rounded-full bg-white px-3 min-[400px]:px-4 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-slate-50 active:scale-95 dark:bg-slate-900 dark:text-slate-300 dark:ring-white/10 dark:hover:bg-slate-800"
       >
         {view === 'map' ? <List className="size-5" /> : <MapIcon className="size-5" />}
         {view === 'map' ? 'List' : 'Map'}

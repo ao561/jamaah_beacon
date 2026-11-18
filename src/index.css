@@ -79,6 +79,14 @@ body {
   margin-bottom: env(safe-area-inset-bottom);
 }
 
+/* On phones the action bar (FloatingActionBar) spans the screen's width, so lift the zoom
+   buttons above it: its bottom offset + the Host button's 3.5rem height + a small gap. */
+@media (width < 40rem) {
+  .leaflet-bottom.leaflet-left {
+    margin-bottom: calc(max(1.25rem, env(safe-area-inset-bottom)) + 3.75rem);
+  }
+}
+
 /* ---------- Map markers (see lib/markerIcons.ts) ---------- */
 
 .beacon-icon {
