@@ -11,7 +11,7 @@ export function initMonitoring(): void {
   Sentry.init({
     dsn: DSN,
     // Set by Vercel ("production" / "preview"), so preview-only errors are easy to tell apart.
-    environment: import.meta.env.VITE_VERCEL_ENV ?? 'development',
+    environment: import.meta.env.VITE_VERCEL_ENV ?? import.meta.env.MODE,
     release: import.meta.env.VITE_VERCEL_GIT_COMMIT_SHA,
     // Only what's needed to debug: the error, stack trace, browser and page.
     dataCollection: {
